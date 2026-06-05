@@ -90,8 +90,13 @@ function autoPickColumns(type) {
     return
   }
 
-  erpSkuColumn.value = matchedSku
-  erpQtyColumn.value = matchedQty
+  erpSkuColumn.value = columns.includes('品項編碼')
+      ? '品項編碼'
+      : ''
+
+  erpQtyColumn.value = columns.includes('TWSS-STEEL SHOP')
+      ? 'TWSS-STEEL SHOP'
+      : ''
 }
 
 function handleCompare() {
