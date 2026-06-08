@@ -15,6 +15,14 @@ const props = defineProps({
   qtyColumn: {
     type: String,
     default: ''
+  },
+  skuLabel: {
+    type: String,
+    default: 'SKU 欄位'
+  },
+  qtyLabel: {
+    type: String,
+    default: '庫存數量欄位'
   }
 })
 
@@ -29,7 +37,7 @@ const emit = defineEmits(['update:skuColumn', 'update:qtyColumn'])
 
     <div class="grid gap-4 md:grid-cols-2">
       <label class="block">
-        <span class="mb-1 block text-sm font-medium text-slate-700">SKU 欄位</span>
+        <span class="mb-1 block text-sm font-medium text-slate-700">{{ props.skuLabel }}</span>
         <select
           class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
           :value="props.skuColumn"
@@ -43,7 +51,7 @@ const emit = defineEmits(['update:skuColumn', 'update:qtyColumn'])
       </label>
 
       <label class="block">
-        <span class="mb-1 block text-sm font-medium text-slate-700">庫存數量欄位</span>
+        <span class="mb-1 block text-sm font-medium text-slate-700">{{ props.qtyLabel }}</span>
         <select
           class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
           :value="props.qtyColumn"
