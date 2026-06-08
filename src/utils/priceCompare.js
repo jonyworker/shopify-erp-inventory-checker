@@ -160,3 +160,92 @@ export function comparePrice({
     }
   }
 }
+
+export function comparePriceWithShopify({
+  officialRows,
+  shopifyRows,
+  officialCodeColumn,
+  officialPriceColumn,
+  officialNameColumn,
+  shopifyCodeColumn,
+  shopifyPriceColumn,
+  shopifyNameColumn
+}) {
+  const official = toPriceMap(officialRows, {
+    codeColumn: officialCodeColumn,
+    priceColumn: officialPriceColumn,
+    nameColumn: officialNameColumn
+  })
+
+  const shopify = toPriceMap(shopifyRows, {
+    codeColumn: shopifyCodeColumn,
+    priceColumn: shopifyPriceColumn,
+    nameColumn: shopifyNameColumn
+  })
+
+  const comparedCodeSet = new Set()
+  const results = []
+
+  official.map.forEach((officialItem, itemCode) => {
+    const shopifyItem = shopify.map.get(itemCode)
+    comparedCodeSet.add(itemCode)
+
+    if (!shopifyItem) {
+      results.push({
+        品項編碼: itemCode,
+        來源工作表: officialItem.sourceSheet,
+        RRP品項名稱: officialItem.name,
+        Shopify商品名稱: '',
+        RRP價格: officialItem.price,
+        Shopify價格: '',
+        差異: '',
+        狀態: 'RRP 獨有',
+        備註: officialItem.duplicated ? 'RRP 品項重複，已取第一筆價格' : ''
+      })
+      return
+    }
+
+    const diff = shopifyItem.price - officialItem.price
+
+    results.push({
+      品項編碼: itemCode,
+      來源工作表: officialItem.sourceSheet,
+      RRP品項名稱: officialItem.name,
+      Shopify商品名稱: shopifyItem.name,
+      RRP價格: officialItem.price,
+      Shopify價格: shopifyItem.price,
+      差異: diff,
+      狀態: diff === 0 ? '一致' : '價格不一致',
+      備註: [
+        officialItem.duplicated ? 'RRP 品項重複，已取第一筆價格' : '',
+        officialItem.hasPriceConflict ? 'RRP 重複品項價格不同，請人工確認' : '',
+        shopifyItem.duplicated ? 'Shopify SKU 重複，已取第一筆價格' : '',
+        shopifyItem.hasPriceConflict ? 'Shopify 重複 SKU 價格不同，請人工確認' : ''
+      ].filter(Boolean).join('；')
+    })
+  })
+
+  shopify.map.forEach((shopifyItem, itemCode) => {
+    if (comparedCodeSet.has(itemCode)) return
+
+    results.push({
+      品項編碼: itemCode,
+      來源工作表: '',
+      RRP品項名稱: '',
+      Shopify商品名稱: shopifyItem.name,
+      RRP價格: '',
+      Shopify價格: shopifyItem.price,
+      差異: '',
+      狀態: 'Shopify 獨有',
+      備註: shopifyItem.duplicated ? 'Shopify SKU 重複，已取第一筆價格' : ''
+    })
+  })
+
+  return {
+    results,
+    invalidRows: {
+      official: official.invalidRows,
+      shopify: shopify.invalidRows
+    }
+  }
+}
