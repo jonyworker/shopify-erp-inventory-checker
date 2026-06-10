@@ -187,6 +187,10 @@ function getStatusStyle(status) {
     'ERP 獨有': {
       fill: { fgColor: { rgb: 'DBEAFE' } },
       font: { color: { rgb: '1D4ED8' }, bold: true }
+    },
+    'Ruten 獨有': {
+      fill: { fgColor: { rgb: 'DBEAFE' } },
+      font: { color: { rgb: '1D4ED8' }, bold: true }
     }
   }
 

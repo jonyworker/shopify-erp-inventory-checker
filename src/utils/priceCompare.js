@@ -249,3 +249,93 @@ export function comparePriceWithShopify({
     }
   }
 }
+
+
+export function comparePriceWithRuten({
+  officialRows,
+  rutenRows,
+  officialCodeColumn,
+  officialPriceColumn,
+  officialNameColumn,
+  rutenCodeColumn,
+  rutenPriceColumn,
+  rutenNameColumn
+}) {
+  const official = toPriceMap(officialRows, {
+    codeColumn: officialCodeColumn,
+    priceColumn: officialPriceColumn,
+    nameColumn: officialNameColumn
+  })
+
+  const ruten = toPriceMap(rutenRows, {
+    codeColumn: rutenCodeColumn,
+    priceColumn: rutenPriceColumn,
+    nameColumn: rutenNameColumn
+  })
+
+  const comparedCodeSet = new Set()
+  const results = []
+
+  official.map.forEach((officialItem, itemCode) => {
+    const rutenItem = ruten.map.get(itemCode)
+    comparedCodeSet.add(itemCode)
+
+    if (!rutenItem) {
+      results.push({
+        品項編碼: itemCode,
+        來源工作表: officialItem.sourceSheet,
+        RRP品項名稱: officialItem.name,
+        Ruten商品名稱: '',
+        RRP價格: officialItem.price,
+        Ruten售價: '',
+        差異: '',
+        狀態: 'RRP 獨有',
+        備註: officialItem.duplicated ? 'RRP 品項重複，已取第一筆價格' : ''
+      })
+      return
+    }
+
+    const diff = rutenItem.price - officialItem.price
+
+    results.push({
+      品項編碼: itemCode,
+      來源工作表: officialItem.sourceSheet,
+      RRP品項名稱: officialItem.name,
+      Ruten商品名稱: rutenItem.name,
+      RRP價格: officialItem.price,
+      Ruten售價: rutenItem.price,
+      差異: diff,
+      狀態: diff === 0 ? '一致' : '價格不一致',
+      備註: [
+        officialItem.duplicated ? 'RRP 品項重複，已取第一筆價格' : '',
+        officialItem.hasPriceConflict ? 'RRP 重複品項價格不同，請人工確認' : '',
+        rutenItem.duplicated ? 'Ruten 賣家自用料號重複，已取第一筆價格' : '',
+        rutenItem.hasPriceConflict ? 'Ruten 重複料號價格不同，請人工確認' : ''
+      ].filter(Boolean).join('；')
+    })
+  })
+
+  ruten.map.forEach((rutenItem, itemCode) => {
+    if (comparedCodeSet.has(itemCode)) return
+
+    results.push({
+      品項編碼: itemCode,
+      來源工作表: '',
+      RRP品項名稱: '',
+      Ruten商品名稱: rutenItem.name,
+      RRP價格: '',
+      Ruten售價: rutenItem.price,
+      差異: '',
+      狀態: 'Ruten 獨有',
+      備註: rutenItem.duplicated ? 'Ruten 賣家自用料號重複，已取第一筆價格' : ''
+    })
+  })
+
+  return {
+    results,
+    invalidRows: {
+      official: official.invalidRows,
+      ruten: ruten.invalidRows
+    }
+  }
+}

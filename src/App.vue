@@ -4,6 +4,7 @@ import ToolSwitcher from './components/ToolSwitcher.vue'
 import InventoryChecker from './tools/inventory/InventoryChecker.vue'
 import PriceErpChecker from './tools/price/PriceErpChecker.vue'
 import PriceShopifyChecker from './tools/price/PriceShopifyChecker.vue'
+import PriceRutenChecker from './tools/price/PriceRutenChecker.vue'
 
 const currentTool = ref('inventory')
 
@@ -19,6 +20,10 @@ const toolOptions = [
   {
     label: 'RRP / Shopify 價格比對',
     value: 'priceShopify'
+  },
+  {
+    label: 'RRP / Ruten 價格比對',
+    value: 'priceRuten'
   },
   {
     label: '未來工具一',
@@ -42,6 +47,9 @@ const currentComponent = computed(() => {
 
     case 'priceShopify':
       return PriceShopifyChecker
+
+    case 'priceRuten':
+      return PriceRutenChecker
 
     default:
       return InventoryChecker
