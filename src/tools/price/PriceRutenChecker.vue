@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import FileUploadCard from '../../components/FileUploadCard.vue'
 import ColumnMapper from '../../components/ColumnMapper.vue'
 import SummaryCards from '../../components/SummaryCards.vue'
+import { useCompareResultScroll } from '../../composables/useCompareResultScroll'
 import { downloadCsv, downloadExcel, getColumns, parseDataFile } from '../../utils/fileParser'
 import { comparePriceWithRuten } from '../../utils/priceCompare'
 
@@ -25,13 +26,18 @@ const keyword = ref('')
 const errorMessage = ref('')
 const exportType = ref('xlsx')
 
+const {
+  summarySection,
+  scrollToSummary
+} = useCompareResultScroll()
+
 const canCompare = computed(() => {
   return officialRows.value.length &&
-    rutenRows.value.length &&
-    officialCodeColumn.value &&
-    officialPriceColumn.value &&
-    rutenCodeColumn.value &&
-    rutenPriceColumn.value
+      rutenRows.value.length &&
+      officialCodeColumn.value &&
+      officialPriceColumn.value &&
+      rutenCodeColumn.value &&
+      rutenPriceColumn.value
 })
 
 const filteredResults = computed(() => {
@@ -39,10 +45,10 @@ const filteredResults = computed(() => {
     const keywordText = keyword.value.toLowerCase().trim()
     const matchStatus = statusFilter.value === 'all' || item.狀態 === statusFilter.value
     const matchKeyword = !keywordText ||
-      String(item.品項編碼).toLowerCase().includes(keywordText) ||
-      String(item.RRP品項名稱).toLowerCase().includes(keywordText) ||
-      String(item.Ruten商品名稱).toLowerCase().includes(keywordText) ||
-      String(item.來源工作表).toLowerCase().includes(keywordText)
+        String(item.品項編碼).toLowerCase().includes(keywordText) ||
+        String(item.RRP品項名稱).toLowerCase().includes(keywordText) ||
+        String(item.Ruten商品名稱).toLowerCase().includes(keywordText) ||
+        String(item.來源工作表).toLowerCase().includes(keywordText)
 
     return matchStatus && matchKeyword
   })
@@ -136,7 +142,7 @@ function autoPickColumns(type) {
   rutenNameColumn.value = findFirstMatchedColumn(rutenColumns.value, ['商品名稱', 'Title', '品項名稱', 'Description'])
 }
 
-function handleCompare() {
+async function handleCompare() {
   if (!canCompare.value) return
 
   const compared = comparePriceWithRuten({
@@ -152,6 +158,8 @@ function handleCompare() {
 
   results.value = compared.results
   invalidRows.value = compared.invalidRows
+
+  await scrollToSummary()
 }
 
 function handleExport() {
@@ -206,80 +214,84 @@ function getStatusClass(status) {
     </header>
 
     <div
-      v-if="errorMessage"
-      class="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"
+        v-if="errorMessage"
+        class="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"
     >
       {{ errorMessage }}
     </div>
 
     <section class="grid gap-4 lg:grid-cols-2">
       <FileUploadCard
-        title="RRP 價目表"
-        description="請上傳 RRP 官方價目表，系統會讀取所有工作表，並保留來源工作表名稱。"
-        :filename="officialFileName"
-        :row-count="officialRows.length"
-        @change="handleOfficialFile"
+          title="RRP 價目表"
+          description="請上傳 RRP 官方價目表，系統會讀取所有工作表，並保留來源工作表名稱。"
+          :filename="officialFileName"
+          :row-count="officialRows.length"
+          @change="handleOfficialFile"
       />
 
       <FileUploadCard
-        title="Ruten 商品 Excel"
-        description="請上傳 Ruten 匯出的商品 Excel，預設比對賣家自用料號與售價。"
-        :filename="rutenFileName"
-        :row-count="rutenRows.length"
-        @change="handleRutenFile"
+          title="Ruten 商品 Excel"
+          description="請上傳 Ruten 匯出的商品 Excel，預設比對賣家自用料號與售價。"
+          :filename="rutenFileName"
+          :row-count="rutenRows.length"
+          @change="handleRutenFile"
       />
     </section>
 
     <section class="mt-4 grid gap-4 lg:grid-cols-2">
       <ColumnMapper
-        title="RRP 欄位對應"
-        :columns="officialColumns"
-        sku-label="Item 欄位"
-        qty-label="Retail Price 欄位"
-        v-model:sku-column="officialCodeColumn"
-        v-model:qty-column="officialPriceColumn"
+          title="RRP 欄位對應"
+          :columns="officialColumns"
+          sku-label="Item 欄位"
+          qty-label="Retail Price 欄位"
+          v-model:sku-column="officialCodeColumn"
+          v-model:qty-column="officialPriceColumn"
       />
 
       <ColumnMapper
-        title="Ruten 欄位對應"
-        :columns="rutenColumns"
-        sku-label="賣家自用料號欄位"
-        qty-label="售價欄位"
-        v-model:sku-column="rutenCodeColumn"
-        v-model:qty-column="rutenPriceColumn"
+          title="Ruten 欄位對應"
+          :columns="rutenColumns"
+          sku-label="賣家自用料號欄位"
+          qty-label="售價欄位"
+          v-model:sku-column="rutenCodeColumn"
+          v-model:qty-column="rutenPriceColumn"
       />
     </section>
 
     <section class="mt-6 flex flex-wrap items-center gap-3">
       <button
-        class="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-        :disabled="!canCompare"
-        @click="handleCompare"
+          class="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+          :disabled="!canCompare"
+          @click="handleCompare"
       >
         開始比對
       </button>
 
       <select
-        v-model="exportType"
-        class="rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-700 outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
+          v-model="exportType"
+          class="rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-700 outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
       >
         <option value="xlsx">匯出 XLSX</option>
         <option value="csv">匯出 CSV</option>
       </select>
 
       <button
-        class="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
-        :disabled="!filteredResults.length"
-        @click="handleExport"
+          class="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+          :disabled="!filteredResults.length"
+          @click="handleExport"
       >
         匯出結果
       </button>
     </section>
 
-    <section v-if="results.length" class="mt-8 space-y-6">
+    <section
+        v-if="results.length"
+        ref="summarySection"
+        class="mt-8 space-y-6 scroll-mt-6"
+    >
       <SummaryCards
-        :summary="summary"
-        :labels="{
+          :summary="summary"
+          :labels="{
           total: '比對品項總數',
           matched: '一致',
           different: '數量不一致',
@@ -299,15 +311,15 @@ function getStatusClass(status) {
 
           <div class="flex flex-col gap-3 md:flex-row">
             <input
-              v-model="keyword"
-              class="rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
-              type="search"
-              placeholder="搜尋品項編碼、Ruten 商品名稱或工作表"
+                v-model="keyword"
+                class="rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
+                type="search"
+                placeholder="搜尋品項編碼、Ruten 商品名稱或工作表"
             />
 
             <select
-              v-model="statusFilter"
-              class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
+                v-model="statusFilter"
+                class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
             >
               <option value="all">全部狀態</option>
               <option value="一致">一致</option>
@@ -321,74 +333,74 @@ function getStatusClass(status) {
         <div class="mt-5 overflow-x-auto">
           <table class="min-w-full divide-y divide-slate-200 text-sm">
             <thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th class="px-4 py-3">品項編碼</th>
-                <th class="px-4 py-3">來源工作表</th>
-                <th class="px-4 py-3">RRP 品項名稱</th>
-                <th class="px-4 py-3">Ruten 商品名稱</th>
-                <th class="px-4 py-3 text-right">RRP 價格</th>
-                <th class="px-4 py-3 text-right">Ruten 售價</th>
-                <th class="px-4 py-3 text-right">差異</th>
-                <th class="px-4 py-3">狀態</th>
-                <th class="px-4 py-3">備註</th>
-              </tr>
+            <tr>
+              <th class="px-4 py-3">品項編碼</th>
+              <th class="px-4 py-3">來源工作表</th>
+              <th class="px-4 py-3">RRP 品項名稱</th>
+              <th class="px-4 py-3">Ruten 商品名稱</th>
+              <th class="px-4 py-3 text-right">RRP 價格</th>
+              <th class="px-4 py-3 text-right">Ruten 售價</th>
+              <th class="px-4 py-3 text-right">差異</th>
+              <th class="px-4 py-3">狀態</th>
+              <th class="px-4 py-3">備註</th>
+            </tr>
             </thead>
 
             <tbody class="divide-y divide-slate-100 bg-white">
-              <tr
+            <tr
                 v-for="item in filteredResults"
                 :key="`${item.品項編碼}-${item.狀態}`"
                 class="hover:bg-slate-50"
-              >
-                <td class="whitespace-nowrap px-4 py-3 font-medium text-slate-900">
-                  {{ item.品項編碼 }}
-                </td>
+            >
+              <td class="whitespace-nowrap px-4 py-3 font-medium text-slate-900">
+                {{ item.品項編碼 }}
+              </td>
 
-                <td class="whitespace-nowrap px-4 py-3 text-slate-600">
-                  {{ displayValue(item.來源工作表) }}
-                </td>
+              <td class="whitespace-nowrap px-4 py-3 text-slate-600">
+                {{ displayValue(item.來源工作表) }}
+              </td>
 
-                <td class="min-w-80 px-4 py-3 text-slate-700">
-                  {{ displayValue(item.RRP品項名稱) }}
-                </td>
+              <td class="min-w-80 px-4 py-3 text-slate-700">
+                {{ displayValue(item.RRP品項名稱) }}
+              </td>
 
-                <td class="min-w-80 px-4 py-3 text-slate-700">
-                  {{ displayValue(item.Ruten商品名稱) }}
-                </td>
+              <td class="min-w-80 px-4 py-3 text-slate-700">
+                {{ displayValue(item.Ruten商品名稱) }}
+              </td>
 
-                <td class="whitespace-nowrap px-4 py-3 text-right text-slate-700">
-                  {{ displayValue(item.RRP價格) }}
-                </td>
+              <td class="whitespace-nowrap px-4 py-3 text-right text-slate-700">
+                {{ displayValue(item.RRP價格) }}
+              </td>
 
-                <td class="whitespace-nowrap px-4 py-3 text-right text-slate-700">
-                  {{ displayValue(item.Ruten售價) }}
-                </td>
+              <td class="whitespace-nowrap px-4 py-3 text-right text-slate-700">
+                {{ displayValue(item.Ruten售價) }}
+              </td>
 
-                <td class="whitespace-nowrap px-4 py-3 text-right font-medium text-slate-900">
-                  {{ displayValue(item.差異) }}
-                </td>
+              <td class="whitespace-nowrap px-4 py-3 text-right font-medium text-slate-900">
+                {{ displayValue(item.差異) }}
+              </td>
 
-                <td class="whitespace-nowrap px-4 py-3">
+              <td class="whitespace-nowrap px-4 py-3">
                   <span
-                    class="inline-flex rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset"
-                    :class="getStatusClass(item.狀態)"
+                      class="inline-flex rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset"
+                      :class="getStatusClass(item.狀態)"
                   >
                     {{ item.狀態 }}
                   </span>
-                </td>
+              </td>
 
-                <td class="min-w-64 px-4 py-3 text-slate-500">
-                  {{ item.備註 }}
-                </td>
-              </tr>
+              <td class="min-w-64 px-4 py-3 text-slate-500">
+                {{ item.備註 }}
+              </td>
+            </tr>
             </tbody>
           </table>
         </div>
       </section>
 
       <section
-        v-if="invalidRows.official.length || invalidRows.ruten.length"
-        class="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800"
+          v-if="invalidRows.official.length || invalidRows.ruten.length"
+          class="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800"
       >
         <h2 class="font-semibold">有部分資料未納入比對</h2>
 

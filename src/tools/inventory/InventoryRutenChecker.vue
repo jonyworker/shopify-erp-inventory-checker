@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import FileUploadCard from '../../components/FileUploadCard.vue'
 import ColumnMapper from '../../components/ColumnMapper.vue'
 import SummaryCards from '../../components/SummaryCards.vue'
+import { useCompareResultScroll } from '../../composables/useCompareResultScroll'
 import { downloadCsv, downloadExcel, getColumns, parseDataFile } from '../../utils/fileParser'
 import { compareInventoryBySource } from '../../utils/inventory'
 
@@ -22,6 +23,11 @@ const statusFilter = ref('all')
 const keyword = ref('')
 const errorMessage = ref('')
 const exportType = ref('xlsx')
+
+const {
+  summarySection,
+  scrollToSummary
+} = useCompareResultScroll()
 
 const canCompare = computed(() => {
   return rutenRows.value.length &&
@@ -94,14 +100,14 @@ function autoPickColumns(type) {
     rutenSkuColumn.value = columns.includes('賣家自用料號')
         ? '賣家自用料號'
         : columns.includes('品項編碼')
-          ? '品項編碼'
-          : ''
+            ? '品項編碼'
+            : ''
 
     rutenQtyColumn.value = columns.includes('庫存')
         ? '庫存'
         : columns.includes('SHOP')
-          ? 'SHOP'
-          : ''
+            ? 'SHOP'
+            : ''
 
     return
   }
@@ -113,11 +119,11 @@ function autoPickColumns(type) {
   erpQtyColumn.value = columns.includes('TWSS-STEEL SHOP')
       ? 'TWSS-STEEL SHOP'
       : columns.includes('SHOP')
-        ? 'SHOP'
-        : ''
+          ? 'SHOP'
+          : ''
 }
 
-function handleCompare() {
+async function handleCompare() {
   if (!canCompare.value) return
 
   const compared = compareInventoryBySource({
@@ -138,6 +144,8 @@ function handleCompare() {
     ruten: compared.invalidRows.source,
     erp: compared.invalidRows.target
   }
+
+  await scrollToSummary()
 }
 
 function handleExport() {
@@ -258,10 +266,14 @@ function getStatusClass(status) {
       </button>
     </section>
 
-    <section v-if="results.length" class="mt-8 space-y-6">
+    <section
+        v-if="results.length"
+        ref="summarySection"
+        class="mt-8 space-y-6 scroll-mt-6"
+    >
       <SummaryCards
-        :summary="summary"
-        :labels="{
+          :summary="summary"
+          :labels="{
           total: '比對品項總數',
           matched: '一致',
           different: '數量不一致',
@@ -336,12 +348,12 @@ function getStatusClass(status) {
               </td>
 
               <td class="whitespace-nowrap px-4 py-3">
-                <span
-                    class="inline-flex rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset"
-                    :class="getStatusClass(item.status)"
-                >
-                  {{ item.status }}
-                </span>
+                  <span
+                      class="inline-flex rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset"
+                      :class="getStatusClass(item.status)"
+                  >
+                    {{ item.status }}
+                  </span>
               </td>
 
               <td class="px-4 py-3 text-slate-500">
@@ -357,7 +369,9 @@ function getStatusClass(status) {
           v-if="invalidRows.ruten.length || invalidRows.erp.length"
           class="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800"
       >
-        <h2 class="font-semibold">有部分資料未納入比對</h2>
+        <h2 class="font-semibold">
+          有部分資料未納入比對
+        </h2>
 
         <p class="mt-1">
           Ruten 品項編碼空白 {{ invalidRows.ruten.length }} 筆，ERP 品項編碼空白 {{ invalidRows.erp.length }} 筆。

@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { useCompareResultScroll } from '../../composables/useCompareResultScroll'
 import FileUploadCard from '../../components/FileUploadCard.vue'
 import ColumnMapper from '../../components/ColumnMapper.vue'
 import SummaryCards from '../../components/SummaryCards.vue'
@@ -22,6 +23,10 @@ const statusFilter = ref('all')
 const keyword = ref('')
 const errorMessage = ref('')
 const exportType = ref('xlsx')
+const {
+  summarySection,
+  scrollToSummary
+} = useCompareResultScroll()
 
 const canCompare = computed(() => {
   return shopifyRows.value.length &&
@@ -114,7 +119,7 @@ function autoPickColumns(type) {
       : ''
 }
 
-function handleCompare() {
+async function handleCompare() {
   if (!canCompare.value) return
 
   const compared = compareInventory({
@@ -128,6 +133,8 @@ function handleCompare() {
 
   results.value = compared.results
   invalidRows.value = compared.invalidRows
+
+  await scrollToSummary()
 }
 
 function handleExport() {
@@ -239,7 +246,11 @@ function getStatusClass(status) {
         </button>
       </section>
 
-      <section v-if="results.length" class="mt-8 space-y-6">
+      <section
+          v-if="results.length"
+          ref="summarySection"
+          class="mt-8 space-y-6 scroll-mt-6"
+      >
         <SummaryCards
           :summary="summary"
           :labels="{
