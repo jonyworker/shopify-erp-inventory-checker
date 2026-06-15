@@ -2,6 +2,10 @@ function normalizeSku(value) {
   return String(value ?? '').trim()
 }
 
+function isIgnoredSku(value) {
+  return value === '合計' || /^\d{4}\/\d{2}\/\d{2}/.test(value)
+}
+
 function normalizeQty(value) {
   const cleanedValue = String(value ?? '')
     .replace(/,/g, '')
@@ -12,7 +16,7 @@ function normalizeQty(value) {
   return Number.isFinite(numberValue) ? numberValue : 0
 }
 
-function toInventoryMap(rows, skuColumn, qtyColumn) {
+function toInventoryMap(rows, skuColumn, qtyColumn, sourceLabel = '來源') {
   const map = new Map()
   const invalidRows = []
 
@@ -20,10 +24,10 @@ function toInventoryMap(rows, skuColumn, qtyColumn) {
     const sku = normalizeSku(row[skuColumn])
     const qty = normalizeQty(row[qtyColumn])
 
-    if (!sku) {
+    if (!sku || isIgnoredSku(sku)) {
       invalidRows.push({
         rowNumber: index + 2,
-        reason: 'SKU 空白',
+        reason: !sku ? `${sourceLabel} SKU 空白` : `${sourceLabel} 非商品資料列`,
         raw: row
       })
       return
@@ -48,6 +52,76 @@ function toInventoryMap(rows, skuColumn, qtyColumn) {
   return { map, invalidRows }
 }
 
+export function compareInventoryBySource({
+  sourceRows,
+  targetRows,
+  sourceSkuColumn,
+  sourceQtyColumn,
+  targetSkuColumn,
+  targetQtyColumn,
+  sourceLabel = '來源',
+  targetLabel = 'ERP',
+  sourceQtyKey = 'sourceQty',
+  targetQtyKey = 'targetQty'
+}) {
+  const source = toInventoryMap(sourceRows, sourceSkuColumn, sourceQtyColumn, sourceLabel)
+  const target = toInventoryMap(targetRows, targetSkuColumn, targetQtyColumn, targetLabel)
+  const comparedSkuSet = new Set()
+  const results = []
+
+  source.map.forEach((sourceItem, sku) => {
+    const targetItem = target.map.get(sku)
+    comparedSkuSet.add(sku)
+
+    if (!targetItem) {
+      results.push({
+        sku,
+        [sourceQtyKey]: sourceItem.qty,
+        [targetQtyKey]: '',
+        diff: '',
+        status: `${sourceLabel} 獨有`,
+        note: sourceItem.duplicated ? `${sourceLabel} SKU 重複，已加總` : ''
+      })
+      return
+    }
+
+    const diff = sourceItem.qty - targetItem.qty
+
+    results.push({
+      sku,
+      [sourceQtyKey]: sourceItem.qty,
+      [targetQtyKey]: targetItem.qty,
+      diff,
+      status: diff === 0 ? '一致' : '數量不一致',
+      note: [
+        sourceItem.duplicated ? `${sourceLabel} SKU 重複，已加總` : '',
+        targetItem.duplicated ? `${targetLabel} SKU 重複，已加總` : ''
+      ].filter(Boolean).join('；')
+    })
+  })
+
+  target.map.forEach((targetItem, sku) => {
+    if (comparedSkuSet.has(sku)) return
+
+    results.push({
+      sku,
+      [sourceQtyKey]: '',
+      [targetQtyKey]: targetItem.qty,
+      diff: '',
+      status: `${targetLabel} 獨有`,
+      note: targetItem.duplicated ? `${targetLabel} SKU 重複，已加總` : ''
+    })
+  })
+
+  return {
+    results,
+    invalidRows: {
+      source: source.invalidRows,
+      target: target.invalidRows
+    }
+  }
+}
+
 export function compareInventory({
   shopifyRows,
   erpRows,
@@ -56,60 +130,24 @@ export function compareInventory({
   erpSkuColumn,
   erpQtyColumn
 }) {
-  const shopify = toInventoryMap(shopifyRows, shopifySkuColumn, shopifyQtyColumn)
-  const erp = toInventoryMap(erpRows, erpSkuColumn, erpQtyColumn)
-  const comparedSkuSet = new Set()
-  const results = []
-
-  shopify.map.forEach((shopifyItem, sku) => {
-    const erpItem = erp.map.get(sku)
-    comparedSkuSet.add(sku)
-
-    if (!erpItem) {
-      results.push({
-        sku,
-        shopifyQty: shopifyItem.qty,
-        erpQty: '',
-        diff: '',
-        status: 'Shopify 獨有',
-        note: shopifyItem.duplicated ? 'Shopify SKU 重複，已加總' : ''
-      })
-      return
-    }
-
-    const diff = shopifyItem.qty - erpItem.qty
-
-    results.push({
-      sku,
-      shopifyQty: shopifyItem.qty,
-      erpQty: erpItem.qty,
-      diff,
-      status: diff === 0 ? '一致' : '數量不一致',
-      note: [
-        shopifyItem.duplicated ? 'Shopify SKU 重複，已加總' : '',
-        erpItem.duplicated ? 'ERP SKU 重複，已加總' : ''
-      ].filter(Boolean).join('；')
-    })
-  })
-
-  erp.map.forEach((erpItem, sku) => {
-    if (comparedSkuSet.has(sku)) return
-
-    results.push({
-      sku,
-      shopifyQty: '',
-      erpQty: erpItem.qty,
-      diff: '',
-      status: 'ERP 獨有',
-      note: erpItem.duplicated ? 'ERP SKU 重複，已加總' : ''
-    })
+  const compared = compareInventoryBySource({
+    sourceRows: shopifyRows,
+    targetRows: erpRows,
+    sourceSkuColumn: shopifySkuColumn,
+    sourceQtyColumn: shopifyQtyColumn,
+    targetSkuColumn: erpSkuColumn,
+    targetQtyColumn: erpQtyColumn,
+    sourceLabel: 'Shopify',
+    targetLabel: 'ERP',
+    sourceQtyKey: 'shopifyQty',
+    targetQtyKey: 'erpQty'
   })
 
   return {
-    results,
+    results: compared.results,
     invalidRows: {
-      shopify: shopify.invalidRows,
-      erp: erp.invalidRows
+      shopify: compared.invalidRows.source,
+      erp: compared.invalidRows.target
     }
   }
 }

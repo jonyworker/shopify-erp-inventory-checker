@@ -63,6 +63,8 @@ function rowsFromWorksheet(worksheet, sheetName, options) {
     'Item',
     '品項編碼',
     '可買編碼',
+    '賣家自用料號',
+    '商品編號',
     '品項名稱',
     '合計'
   ]
