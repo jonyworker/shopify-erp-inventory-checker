@@ -116,7 +116,7 @@ function autoPickColumns(type) {
   }
 
   erpCodeColumn.value = findFirstMatchedColumn(erpColumns.value, ['品項編碼', 'Item', 'SKU', '商品編號'])
-  erpPriceColumn.value = findFirstMatchedColumn(erpColumns.value, ['出庫單價', '售價', '價格', 'Retail Price'])
+  erpPriceColumn.value = findFirstMatchedColumn(erpColumns.value, ['出庫單價', '零售價', '價格', 'Retail Price'])
   erpNameColumn.value = findFirstMatchedColumn(erpColumns.value, ['品項名稱', 'Description', '商品名稱'])
 }
 
