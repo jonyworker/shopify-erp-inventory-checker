@@ -43,11 +43,26 @@ const filteredResults = computed(() => {
 
 const summary = computed(() => {
   const total = results.value.length
-  const matched = results.value.filter(item => item.status === '一致').length
-  const different = results.value.filter(item => item.status === '數量不一致').length
-  const missing = results.value.filter(item => item.status === 'Shopify 獨有' || item.status === 'ERP 獨有').length
 
-  return { total, matched, different, missing }
+  const matched =
+      results.value.filter(item => item.status === '一致').length
+
+  const different =
+      results.value.filter(item => item.status === '數量不一致').length
+
+  const sourceOnly =
+      results.value.filter(item => item.status === 'ERP 獨有').length
+
+  const targetOnly =
+      results.value.filter(item => item.status === 'Shopify 獨有').length
+
+  return {
+    total,
+    matched,
+    different,
+    sourceOnly,
+    targetOnly
+  }
 })
 
 async function handleShopifyFile(file) {
@@ -148,11 +163,11 @@ function getStatusClass(status) {
         <p class="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Inventory Tool</p>
 
         <h1 class="mt-2 text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
-          Shopify / ERP 庫存比對工具
+          ERP / Shopify 庫存比對工具
         </h1>
 
         <p class="mt-3 max-w-2xl text-slate-600">
-          匯入 Shopify CSV 與 ERP CSV / Excel，選擇 SKU 與庫存欄位，系統會自動比對一致、數量不一致、Shopify 獨有與 ERP 獨有的資料。
+          匯入 ERP Excel 與 Shopify CSV，系統會以 ERP 庫存作為比對基準， 快速找出一致、數量不一致、ERP 獨有與 Shopify 獨有的資料。
         </p>
     </header>
 
@@ -165,35 +180,35 @@ function getStatusClass(status) {
 
       <section class="grid gap-4 lg:grid-cols-2">
         <FileUploadCard
+            title="ERP Excel"
+            description="請上傳 ERP 匯出的庫存 CSV、XLSX 或 XLS。"
+            :filename="erpFileName"
+            :row-count="erpRows.length"
+            @change="handleErpFile"
+        />
+
+        <FileUploadCard
             title="Shopify CSV"
             description="請上傳從 Shopify 匯出的商品或庫存 CSV。"
             :filename="shopifyFileName"
             :row-count="shopifyRows.length"
             @change="handleShopifyFile"
         />
-
-        <FileUploadCard
-            title="ERP 檔案"
-            description="請上傳 ERP 匯出的庫存 CSV、XLSX 或 XLS。"
-            :filename="erpFileName"
-            :row-count="erpRows.length"
-            @change="handleErpFile"
-        />
       </section>
 
       <section class="mt-4 grid gap-4 lg:grid-cols-2">
-        <ColumnMapper
-            title="Shopify 欄位對應"
-            :columns="shopifyColumns"
-            v-model:sku-column="shopifySkuColumn"
-            v-model:qty-column="shopifyQtyColumn"
-        />
-
         <ColumnMapper
             title="ERP 欄位對應"
             :columns="erpColumns"
             v-model:sku-column="erpSkuColumn"
             v-model:qty-column="erpQtyColumn"
+        />
+
+        <ColumnMapper
+            title="Shopify 欄位對應"
+            :columns="shopifyColumns"
+            v-model:sku-column="shopifySkuColumn"
+            v-model:qty-column="shopifyQtyColumn"
         />
       </section>
 
@@ -225,7 +240,16 @@ function getStatusClass(status) {
       </section>
 
       <section v-if="results.length" class="mt-8 space-y-6">
-        <SummaryCards :summary="summary" />
+        <SummaryCards
+          :summary="summary"
+          :labels="{
+            total: '比對品項總數',
+            matched: '一致',
+            different: '數量不一致',
+            sourceOnly: 'ERP 獨有',
+            targetOnly: 'Shopify 獨有'
+          }"
+        />
 
         <section class="rounded-2xl bg-white p-5 shadow-sm">
           <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -251,8 +275,8 @@ function getStatusClass(status) {
                 <option value="all">全部狀態</option>
                 <option value="一致">一致</option>
                 <option value="數量不一致">數量不一致</option>
-                <option value="Shopify 獨有">Shopify 獨有</option>
                 <option value="ERP 獨有">ERP 獨有</option>
+                <option value="Shopify 獨有">Shopify 獨有</option>
               </select>
             </div>
           </div>
@@ -262,8 +286,8 @@ function getStatusClass(status) {
               <thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th class="px-4 py-3">SKU</th>
-                <th class="px-4 py-3 text-right">Shopify 庫存</th>
                 <th class="px-4 py-3 text-right">ERP 庫存</th>
+                <th class="px-4 py-3 text-right">Shopify 庫存</th>
                 <th class="px-4 py-3 text-right">差異</th>
                 <th class="px-4 py-3">狀態</th>
                 <th class="px-4 py-3">備註</th>
@@ -281,11 +305,11 @@ function getStatusClass(status) {
                 </td>
 
                 <td class="whitespace-nowrap px-4 py-3 text-right text-slate-700">
-                  {{ displayValue(item.shopifyQty) }}
+                  {{ displayValue(item.erpQty) }}
                 </td>
 
                 <td class="whitespace-nowrap px-4 py-3 text-right text-slate-700">
-                  {{ displayValue(item.erpQty) }}
+                  {{ displayValue(item.shopifyQty) }}
                 </td>
 
                 <td class="whitespace-nowrap px-4 py-3 text-right font-medium text-slate-900">
