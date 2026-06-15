@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 const props = defineProps({
   modelValue: {
@@ -15,6 +15,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue'])
 
 const isOpen = ref(false)
+const switcherRef = ref(null)
 
 const currentLabel = computed(() => {
   for (const group of props.groups) {
@@ -32,10 +33,29 @@ function selectTool(tool) {
   emit('update:modelValue', tool.value)
   isOpen.value = false
 }
+
+function handleClickOutside(event) {
+  if (!switcherRef.value) return
+
+  if (!switcherRef.value.contains(event.target)) {
+    isOpen.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 </script>
 
 <template>
-  <div class="relative w-full sm:w-80">
+  <div
+      ref="switcherRef"
+      class="relative w-full sm:w-80"
+  >
     <p class="mb-1 text-sm font-medium text-slate-700">
       工具切換
     </p>
