@@ -1,21 +1,21 @@
 <script setup>
 import { computed, ref } from 'vue'
 import ToolSwitcher from './components/ToolSwitcher.vue'
-import InventoryChecker from './tools/inventory/InventoryChecker.vue'
+import InventoryShopifyChecker from './tools/inventory/InventoryShopifyChecker.vue'
 import InventoryRutenChecker from './tools/inventory/InventoryRutenChecker.vue'
 import PriceErpChecker from './tools/price/PriceErpChecker.vue'
 import PriceShopifyChecker from './tools/price/PriceShopifyChecker.vue'
 import PriceRutenChecker from './tools/price/PriceRutenChecker.vue'
 
-const currentTool = ref('inventory')
+const currentTool = ref('inventoryShopify')
 
 const toolOptions = [
   {
-    label: 'Shopify / ERP 庫存比對',
-    value: 'inventory'
+    label: 'ERP / Shopify 庫存比對',
+    value: 'inventoryShopify'
   },
   {
-    label: 'Ruten / ERP 庫存比對',
+    label: 'ERP / Ruten 庫存比對',
     value: 'inventoryRuten'
   },
   {
@@ -44,8 +44,8 @@ const toolOptions = [
 
 const currentComponent = computed(() => {
   switch (currentTool.value) {
-    case 'inventory':
-      return InventoryChecker
+    case 'inventoryShopify':
+      return InventoryShopifyChecker
 
     case 'inventoryRuten':
       return InventoryRutenChecker
@@ -60,7 +60,7 @@ const currentComponent = computed(() => {
       return PriceRutenChecker
 
     default:
-      return InventoryChecker
+      return InventoryShopifyChecker
   }
 })
 </script>
