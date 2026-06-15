@@ -9,37 +9,55 @@ import PriceRutenChecker from './tools/price/PriceRutenChecker.vue'
 
 const currentTool = ref('inventoryShopify')
 
-const toolOptions = [
+const toolGroups = [
   {
-    label: 'ERP / Shopify 庫存比對',
-    value: 'inventoryShopify'
+    label: '庫存工具',
+    description: '比對 ERP 與通路庫存資料',
+    tools: [
+      {
+        label: 'ERP / Shopify 庫存比對',
+        value: 'inventoryShopify'
+      },
+      {
+        label: 'ERP / Ruten 庫存比對',
+        value: 'inventoryRuten'
+      }
+    ]
   },
   {
-    label: 'ERP / Ruten 庫存比對',
-    value: 'inventoryRuten'
+    label: '價格工具',
+    description: '比對 RRP、ERP 與通路價格資料',
+    tools: [
+      {
+        label: 'RRP / ERP 價格比對',
+        value: 'priceErp'
+      },
+      {
+        label: 'RRP / Shopify 價格比對',
+        value: 'priceShopify'
+      },
+      {
+        label: 'RRP / Ruten 價格比對',
+        value: 'priceRuten'
+      }
+    ]
   },
-  {
-    label: 'RRP / ERP 價格比對',
-    value: 'priceErp'
-  },
-  {
-    label: 'RRP / Shopify 價格比對',
-    value: 'priceShopify'
-  },
-  {
-    label: 'RRP / Ruten 價格比對',
-    value: 'priceRuten'
-  },
-  {
-    label: '未來工具一',
-    value: 'future-1',
-    disabled: true
-  },
-  {
-    label: '未來工具二',
-    value: 'future-2',
-    disabled: true
-  }
+  // {
+  //   label: '未來工具',
+  //   description: '預留後續擴充功能',
+  //   tools: [
+  //     {
+  //       label: '未來工具一',
+  //       value: 'future-1',
+  //       disabled: true
+  //     },
+  //     {
+  //       label: '未來工具二',
+  //       value: 'future-2',
+  //       disabled: true
+  //     }
+  //   ]
+  // }
 ]
 
 const currentComponent = computed(() => {
@@ -85,7 +103,7 @@ const currentComponent = computed(() => {
 
         <ToolSwitcher
             v-model="currentTool"
-            :options="toolOptions"
+            :groups="toolGroups"
         />
       </section>
 
