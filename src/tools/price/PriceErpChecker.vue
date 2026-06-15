@@ -49,11 +49,26 @@ const filteredResults = computed(() => {
 
 const summary = computed(() => {
   const total = results.value.length
-  const matched = results.value.filter(item => item.狀態 === '一致').length
-  const different = results.value.filter(item => item.狀態 === '價格不一致').length
-  const missing = results.value.filter(item => item.狀態 === 'RRP 獨有' || item.狀態 === 'ERP 獨有').length
 
-  return { total, matched, different, missing }
+  const matched =
+      results.value.filter(item => item.狀態 === '一致').length
+
+  const different =
+      results.value.filter(item => item.狀態 === '價格不一致').length
+
+  const sourceOnly =
+      results.value.filter(item => item.狀態 === 'RRP 獨有').length
+
+  const targetOnly =
+      results.value.filter(item => item.狀態 === 'ERP 獨有').length
+
+  return {
+    total,
+    matched,
+    different,
+    sourceOnly,
+    targetOnly
+  }
 })
 
 async function handleOfficialFile(file) {
@@ -262,7 +277,16 @@ function getStatusClass(status) {
       </section>
 
       <section v-if="results.length" class="mt-8 space-y-6">
-        <SummaryCards :summary="summary" />
+        <SummaryCards
+          :summary="summary"
+          :labels="{
+            total: '比對品項總數',
+            matched: '一致',
+            different: '價格不一致',
+            sourceOnly: 'RRP 獨有',
+            targetOnly: 'ERP 獨有'
+          }"
+        />
 
         <section class="rounded-2xl bg-white p-5 shadow-sm">
           <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -301,7 +325,7 @@ function getStatusClass(status) {
                   <th class="px-4 py-3">品項編碼</th>
                   <th class="px-4 py-3">來源工作表</th>
                   <th class="px-4 py-3">品項名稱</th>
-                  <th class="px-4 py-3 text-right">價目表價格</th>
+                  <th class="px-4 py-3 text-right">RRP 價格</th>
                   <th class="px-4 py-3 text-right">ERP 出庫單價</th>
                   <th class="px-4 py-3 text-right">差異</th>
                   <th class="px-4 py-3">狀態</th>
