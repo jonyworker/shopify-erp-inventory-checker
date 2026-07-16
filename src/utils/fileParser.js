@@ -151,9 +151,10 @@ export function getColumns(rows) {
   return Array.from(columnSet)
 }
 
-export function downloadCsv(filename, rows) {
-  const csv = Papa.unparse(rows)
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+export function downloadCsv(filename, rows, options = {}) {
+  const csv = Papa.unparse(rows, { newline: '\r\n' })
+  const content = options.withBom ? `\uFEFF${csv}` : csv
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
 
