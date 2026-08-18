@@ -6,6 +6,7 @@ import InventoryRutenChecker from './tools/inventory/InventoryRutenChecker.vue'
 import PriceErpChecker from './tools/price/PriceErpChecker.vue'
 import PriceShopifyChecker from './tools/price/PriceShopifyChecker.vue'
 import PriceRutenChecker from './tools/price/PriceRutenChecker.vue'
+import ShopifyPromotionTool from './tools/promotion/ShopifyPromotionTool.vue'
 
 const currentTool = ref('inventoryShopify')
 
@@ -39,6 +40,16 @@ const toolGroups = [
       {
         label: 'RRP / Ruten 價格比對',
         value: 'priceRuten'
+      }
+    ]
+  },
+  {
+    label: 'Shopify 工具',
+    description: '活動商品上架與完整性檢查',
+    tools: [
+      {
+        label: '活動商品上架',
+        value: 'shopifyPromotion'
       }
     ]
   },
@@ -77,6 +88,9 @@ const currentComponent = computed(() => {
     case 'priceRuten':
       return PriceRutenChecker
 
+    case 'shopifyPromotion':
+      return ShopifyPromotionTool
+
     default:
       return InventoryShopifyChecker
   }
@@ -97,7 +111,7 @@ const currentComponent = computed(() => {
           </h1>
 
           <p class="mt-2 text-sm text-slate-500">
-            庫存、價格與未來資料比對工具集中管理。
+            庫存、價格與 Shopify 活動工具集中管理。
           </p>
         </div>
 
