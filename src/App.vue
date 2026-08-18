@@ -6,7 +6,8 @@ import InventoryRutenChecker from './tools/inventory/InventoryRutenChecker.vue'
 import PriceErpChecker from './tools/price/PriceErpChecker.vue'
 import PriceShopifyChecker from './tools/price/PriceShopifyChecker.vue'
 import PriceRutenChecker from './tools/price/PriceRutenChecker.vue'
-import ShopifyPromotionTool from './tools/promotion/ShopifyPromotionTool.vue'
+import ShopifyPromotionLaunchTool from './tools/promotion/ShopifyPromotionLaunchTool.vue'
+import ShopifyPromotionEndTool from './tools/promotion/ShopifyPromotionEndTool.vue'
 
 const currentTool = ref('inventoryShopify')
 
@@ -45,11 +46,15 @@ const toolGroups = [
   },
   {
     label: 'Shopify 工具',
-    description: '活動商品上架與完整性檢查',
+    description: '活動商品上架與下架管理',
     tools: [
       {
-        label: '活動商品上架',
-        value: 'shopifyPromotion'
+        label: '商品上架',
+        value: 'shopifyPromotionLaunch'
+      },
+      {
+        label: '商品下架',
+        value: 'shopifyPromotionEnd'
       }
     ]
   },
@@ -88,8 +93,11 @@ const currentComponent = computed(() => {
     case 'priceRuten':
       return PriceRutenChecker
 
-    case 'shopifyPromotion':
-      return ShopifyPromotionTool
+    case 'shopifyPromotionLaunch':
+      return ShopifyPromotionLaunchTool
+
+    case 'shopifyPromotionEnd':
+      return ShopifyPromotionEndTool
 
     default:
       return InventoryShopifyChecker

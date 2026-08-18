@@ -5,6 +5,7 @@ import { downloadCsv, downloadExcel, parseDataFile } from '@/utils/fileParser'
 import {
   buildPromotionIssueRows,
   buildShopifyPromotionImportRows,
+  buildShopifyPromotionNormalRows,
   comparePromotionWithShopify,
   parsePromotionWorkbook
 } from '@/utils/shopifyPromotionImport'
@@ -21,6 +22,12 @@ const statusFilter = ref('all')
 const tagInput = ref('')
 const addedTags = ref([])
 
+const normalShopifyFileName = ref('')
+const normalShopifyRows = ref([])
+const removeTagInput = ref('')
+const removedTags = ref([])
+const normalErrorMessage = ref('')
+
 const selectedPromotionRows = computed(() => promotionSheets.value.find(sheet => sheet.name === selectedSheet.value)?.rows || [])
 const canCompare = computed(() => selectedPromotionRows.value.length > 0 && shopifyRows.value.length > 0)
 
@@ -34,21 +41,46 @@ const summary = computed(() => ({
 
 const filteredResults = computed(() => {
   const text = keyword.value.trim().toLowerCase()
+
   return results.value.filter(item => {
     const matchStatus = statusFilter.value === 'all' || item.status === statusFilter.value
     const matchKeyword = !text || [item.sku, item.name, item.shopifyTitle, item.handle, item.statusLabel]
-      .some(value => String(value ?? '').toLowerCase().includes(text))
+        .some(value => String(value ?? '').toLowerCase().includes(text))
+
     return matchStatus && matchKeyword
   })
 })
 
-const shopifyImportRows = computed(() => buildShopifyPromotionImportRows({
-  shopifyRows: shopifyRows.value,
-  compareResults: results.value,
-  addedTags: addedTags.value
-}))
+const saleImportRows = computed(() =>
+    buildShopifyPromotionImportRows({
+      shopifyRows: shopifyRows.value,
+      compareResults: results.value,
+      addedTags: addedTags.value
+    })
+)
 
-const issueRows = computed(() => buildPromotionIssueRows(results.value))
+const normalImportRows = computed(() =>
+    buildShopifyPromotionNormalRows({
+      shopifyRows: normalShopifyRows.value,
+      removedTags: removedTags.value
+    })
+)
+
+const normalVariantCount = computed(() =>
+    normalShopifyRows.value.filter(row => String(row['Variant SKU'] ?? '').trim()).length
+)
+
+const normalCompareAtMissingCount = computed(() =>
+    normalShopifyRows.value.filter(row => {
+      const sku = String(row['Variant SKU'] ?? '').trim()
+      const compareAtPrice = String(row['Variant Compare At Price'] ?? '').trim()
+      return sku && !compareAtPrice
+    }).length
+)
+
+const issueRows = computed(() =>
+    buildPromotionIssueRows(results.value)
+)
 
 function resetResults() {
   results.value = []
@@ -81,8 +113,20 @@ async function handleShopifyFile(file) {
   }
 }
 
+async function handleNormalShopifyFile(file) {
+  try {
+    normalErrorMessage.value = ''
+    normalShopifyFileName.value = file.name
+    normalShopifyRows.value = await parseDataFile(file)
+  } catch (error) {
+    console.error(error)
+    normalErrorMessage.value = '活動結束 CSV 解析失敗，請確認檔案為 Shopify 匯出的商品 CSV。'
+  }
+}
+
 function runCompare() {
   if (!canCompare.value) return
+
   results.value = comparePromotionWithShopify({
     promotionRows: selectedPromotionRows.value,
     shopifyRows: shopifyRows.value
@@ -90,10 +134,15 @@ function runCompare() {
 }
 
 function addTag() {
-  tagInput.value.split(',').map(tag => tag.trim()).filter(Boolean).forEach(tag => {
-    const exists = addedTags.value.some(current => current.toLowerCase() === tag.toLowerCase())
-    if (!exists) addedTags.value.push(tag)
-  })
+  tagInput.value
+      .split(',')
+      .map(tag => tag.trim())
+      .filter(Boolean)
+      .forEach(tag => {
+        const exists = addedTags.value.some(current => current.toLowerCase() === tag.toLowerCase())
+        if (!exists) addedTags.value.push(tag)
+      })
+
   tagInput.value = ''
 }
 
@@ -108,18 +157,66 @@ function removeTag(index) {
   addedTags.value.splice(index, 1)
 }
 
+function addRemoveTag() {
+  removeTagInput.value
+      .split(',')
+      .map(tag => tag.trim())
+      .filter(Boolean)
+      .forEach(tag => {
+        const exists = removedTags.value.some(current => current.toLowerCase() === tag.toLowerCase())
+        if (!exists) removedTags.value.push(tag)
+      })
+
+  removeTagInput.value = ''
+}
+
+function handleRemoveTagKeydown(event) {
+  if (event.key === 'Enter' || event.key === ',') {
+    event.preventDefault()
+    addRemoveTag()
+  }
+}
+
+function removeNormalTag(index) {
+  removedTags.value.splice(index, 1)
+}
+
 function safeSheetName() {
   return selectedSheet.value.replace(/[^\w\-\u4e00-\u9fff]+/g, '_')
 }
 
-function exportShopifyCsv() {
-  if (!shopifyImportRows.value.length) return
-  downloadCsv(`Shopify_Promotion_${safeSheetName()}.csv`, shopifyImportRows.value, { withBom: true })
+function safeNormalFileName() {
+  const baseName = normalShopifyFileName.value.replace(/\.[^.]+$/, '')
+  return baseName.replace(/[^\w\-\u4e00-\u9fff]+/g, '_') || 'Promotion'
+}
+
+function exportSaleCsv() {
+  if (!saleImportRows.value.length) return
+
+  downloadCsv(
+      `Shopify_Promotion_SALE_${safeSheetName()}.csv`,
+      saleImportRows.value,
+      { withBom: true }
+  )
+}
+
+function exportNormalCsv() {
+  if (!normalImportRows.value.length) return
+
+  downloadCsv(
+      `Shopify_Promotion_NORMAL_${safeNormalFileName()}.csv`,
+      normalImportRows.value,
+      { withBom: true }
+  )
 }
 
 function exportIssues() {
   if (!issueRows.value.length) return
-  downloadExcel(`Promotion_Issues_${safeSheetName()}.xlsx`, issueRows.value)
+
+  downloadExcel(
+      `Promotion_Issues_${safeSheetName()}.xlsx`,
+      issueRows.value
+  )
 }
 
 function badgeClass(status) {
@@ -130,6 +227,7 @@ function badgeClass(status) {
     'duplicate-shopify': 'bg-violet-50 text-violet-700 ring-violet-600/20',
     'promotion-duplicate': 'bg-violet-50 text-violet-700 ring-violet-600/20'
   }
+
   return classes[status] || 'bg-slate-50 text-slate-700 ring-slate-600/20'
 }
 </script>
@@ -139,71 +237,142 @@ function badgeClass(status) {
     <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <p class="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Shopify Promotion</p>
       <h2 class="mt-2 text-2xl font-bold text-slate-950">活動商品上架</h2>
-      <p class="mt-2 text-sm leading-6 text-slate-500">以 Promotion 優惠價更新 Variant Price、追加商品 Tags，並找出 Shopify 未上架或找不到的活動商品。</p>
+      <p class="mt-2 text-sm leading-6 text-slate-500">
+        SALE 用 Promotion 優惠價啟動活動；NORMAL 使用活動結束時 Shopify 最新匯出資料恢復正常售價。
+      </p>
     </div>
 
-    <div v-if="errorMessage" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{{ errorMessage }}</div>
+    <section class="space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Sale</p>
+        <h3 class="mt-1 text-xl font-bold text-slate-950">活動開始</h3>
+        <p class="mt-2 text-sm leading-6 text-slate-500">
+          Variant Price 改為 Promotion 優惠價；Variant Compare At Price 視為公司 RRP 並保持不變。
+        </p>
+      </div>
 
-    <div class="grid gap-5 lg:grid-cols-2">
-      <FileUploadCard title="Promotion Excel" description="讀取活動 SKU 與表格中的優惠價格；支援同工作表多個折扣區段。" :filename="promotionFileName" :row-count="selectedPromotionRows.length" @change="handlePromotionFile" />
-      <FileUploadCard title="Shopify All Products" description="使用 Shopify 匯出的完整商品 CSV，比對 Variant SKU、商品狀態與 Tags。" :filename="shopifyFileName" :row-count="shopifyRows.length" @change="handleShopifyFile" />
-    </div>
+      <div v-if="errorMessage" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        {{ errorMessage }}
+      </div>
 
-    <div class="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-      <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <label class="block text-sm font-semibold text-slate-800">活動工作表</label>
-        <select v-model="selectedSheet" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200" @change="resetResults">
-          <option v-for="sheet in promotionSheets" :key="sheet.name" :value="sheet.name">{{ sheet.name }}（{{ sheet.rows.length }} SKU）</option>
-        </select>
-        <p class="mt-3 text-xs leading-5 text-slate-500">價格直接採用 Promotion 表格中的活動價格，不自行計算折扣。</p>
-      </section>
+      <div class="grid gap-5 lg:grid-cols-2">
+        <FileUploadCard
+            title="Promotion Excel"
+            description="讀取活動 SKU 與表格中的優惠價格；支援同工作表多個折扣區段。"
+            :filename="promotionFileName"
+            :row-count="selectedPromotionRows.length"
+            @change="handlePromotionFile"
+        />
 
-      <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <label class="block text-sm font-semibold text-slate-800">另外新增 Tags</label>
-        <div class="mt-2 flex gap-2">
-          <input v-model="tagInput" type="text" placeholder="輸入 Tag，按 Enter 或逗號加入" class="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200" @keydown="handleTagKeydown">
-          <button type="button" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700" @click="addTag">新增</button>
-        </div>
-        <div v-if="addedTags.length" class="mt-3 flex flex-wrap gap-2">
-          <button v-for="(tag, index) in addedTags" :key="`${tag}-${index}`" type="button" class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200" @click="removeTag(index)">{{ tag }} <span class="text-slate-400">×</span></button>
-        </div>
-        <p class="mt-3 text-xs leading-5 text-slate-500">新 Tag 會追加到 Shopify 原 Tags，不覆蓋既有內容，並自動移除重複值。</p>
-      </section>
-    </div>
+        <FileUploadCard
+            title="Shopify All Products"
+            description="使用 Shopify 匯出的完整商品 CSV，比對 Variant SKU、商品狀態與 Tags。"
+            :filename="shopifyFileName"
+            :row-count="shopifyRows.length"
+            @change="handleShopifyFile"
+        />
+      </div>
 
-    <div class="flex justify-end">
-      <button type="button" :disabled="!canCompare" class="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40" @click="runCompare">開始比對</button>
-    </div>
+      <div class="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+        <section class="rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
+          <label class="block text-sm font-semibold text-slate-800">選擇 Promotion Excel 工作表</label>
+          <select
+              v-model="selectedSheet"
+              class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
+              @change="resetResults"
+          >
+            <option v-for="sheet in promotionSheets" :key="sheet.name" :value="sheet.name">
+              {{ sheet.name }}（{{ sheet.rows.length }} SKU）
+            </option>
+          </select>
+          <p class="mt-3 text-xs leading-5 text-slate-500">價格直接採用 Promotion 表格中的活動價格，不自行計算折扣。</p>
+        </section>
 
-    <template v-if="results.length">
-      <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <div class="rounded-2xl bg-white p-5 shadow-sm"><p class="text-sm text-slate-500">活動 SKU</p><p class="mt-2 text-3xl font-bold">{{ summary.total }}</p></div>
-        <div class="rounded-2xl bg-white p-5 shadow-sm"><p class="text-sm text-slate-500">正常上架</p><p class="mt-2 text-3xl font-bold text-emerald-700">{{ summary.ready }}</p></div>
-        <div class="rounded-2xl bg-white p-5 shadow-sm"><p class="text-sm text-slate-500">未正常上架</p><p class="mt-2 text-3xl font-bold text-amber-700">{{ summary.notPublished }}</p></div>
-        <div class="rounded-2xl bg-white p-5 shadow-sm"><p class="text-sm text-slate-500">Shopify 找不到</p><p class="mt-2 text-3xl font-bold text-rose-700">{{ summary.missing }}</p></div>
-        <div class="rounded-2xl bg-white p-5 shadow-sm"><p class="text-sm text-slate-500">重複 SKU</p><p class="mt-2 text-3xl font-bold text-violet-700">{{ summary.duplicate }}</p></div>
-      </section>
-
-      <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div class="flex flex-1 flex-col gap-3 sm:flex-row">
-            <input v-model="keyword" type="search" placeholder="搜尋 SKU、商品名稱、Handle…" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200 sm:max-w-md">
-            <select v-model="statusFilter" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none">
-              <option value="all">全部狀態</option><option value="ready">正常上架</option><option value="not-published">未正常上架</option><option value="missing">Shopify 找不到</option><option value="duplicate-shopify">Shopify SKU 重複</option><option value="promotion-duplicate">Promotion SKU 重複</option>
-            </select>
+        <section class="rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
+          <label class="block text-sm font-semibold text-slate-800">新增活動 Tags</label>
+          <div class="mt-2 flex gap-2">
+            <input
+                v-model="tagInput"
+                type="text"
+                placeholder="例如：2026_AUG_DOUBLE"
+                class="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
+                @keydown="handleTagKeydown"
+            >
+            <button type="button" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700" @click="addTag">
+              新增
+            </button>
           </div>
-          <div class="flex flex-wrap gap-2">
-            <button type="button" :disabled="!issueRows.length" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40" @click="exportIssues">匯出異常清單 Excel</button>
-            <button type="button" :disabled="!shopifyImportRows.length" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-40" @click="exportShopifyCsv">匯出 Shopify 活動 CSV</button>
+
+          <div v-if="addedTags.length" class="mt-3 flex flex-wrap gap-2">
+            <button
+                v-for="(tag, index) in addedTags"
+                :key="`${tag}-${index}`"
+                type="button"
+                class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
+                @click="removeTag(index)"
+            >
+              {{ tag }} <span class="text-slate-400">×</span>
+            </button>
           </div>
-        </div>
 
-        <div class="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">CSV 只更新活動 SKU 的 <strong>Variant Price</strong>；<strong>Variant Compare At Price 完全保留原值</strong>。同商品其他 Variant 會一併帶出，但價格不變。重複 SKU 不會自動匯出。</div>
+          <p class="mt-3 text-xs leading-5 text-slate-500">活動 Tag 會追加到原 Tags；活動結束後可用同一 Tag 找出商品並移除。</p>
+        </section>
+      </div>
 
-        <div class="mt-5 overflow-x-auto">
-          <table class="min-w-full text-left text-sm">
-            <thead class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500"><tr><th class="px-3 py-3">SKU</th><th class="px-3 py-3">Promotion 商品</th><th class="px-3 py-3">Shopify 商品</th><th class="px-3 py-3 text-right">Shopify 價格</th><th class="px-3 py-3 text-right">活動價</th><th class="px-3 py-3">狀態</th></tr></thead>
-            <tbody class="divide-y divide-slate-100">
+      <div class="flex justify-start">
+        <button
+            type="button"
+            :disabled="!canCompare"
+            class="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+            @click="runCompare"
+        >
+          開始比對
+        </button>
+      </div>
+
+      <template v-if="results.length">
+        <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <div class="rounded-2xl bg-slate-50 p-5"><p class="text-sm text-slate-500">活動 SKU</p><p class="mt-2 text-3xl font-bold">{{ summary.total }}</p></div>
+          <div class="rounded-2xl bg-slate-50 p-5"><p class="text-sm text-slate-500">正常上架</p><p class="mt-2 text-3xl font-bold text-emerald-700">{{ summary.ready }}</p></div>
+          <div class="rounded-2xl bg-slate-50 p-5"><p class="text-sm text-slate-500">未正常上架</p><p class="mt-2 text-3xl font-bold text-amber-700">{{ summary.notPublished }}</p></div>
+          <div class="rounded-2xl bg-slate-50 p-5"><p class="text-sm text-slate-500">Shopify 找不到</p><p class="mt-2 text-3xl font-bold text-rose-700">{{ summary.missing }}</p></div>
+          <div class="rounded-2xl bg-slate-50 p-5"><p class="text-sm text-slate-500">重複 SKU</p><p class="mt-2 text-3xl font-bold text-violet-700">{{ summary.duplicate }}</p></div>
+        </section>
+
+        <section class="rounded-2xl border border-slate-200 p-5">
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div class="flex flex-1 flex-col gap-3 sm:flex-row">
+              <input v-model="keyword" type="search" placeholder="搜尋 SKU、商品名稱、Handle…" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200 sm:max-w-md">
+              <select v-model="statusFilter" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none">
+                <option value="all">全部狀態</option>
+                <option value="ready">正常上架</option>
+                <option value="not-published">未正常上架</option>
+                <option value="missing">Shopify 找不到</option>
+                <option value="duplicate-shopify">Shopify SKU 重複</option>
+                <option value="promotion-duplicate">Promotion SKU 重複</option>
+              </select>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+              <button type="button" :disabled="!issueRows.length" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40" @click="exportIssues">
+                匯出異常清單 Excel
+              </button>
+              <button type="button" :disabled="!saleImportRows.length" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-40" @click="exportSaleCsv">
+                匯出 SALE CSV
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
+            SALE 只把活動 SKU 的 <strong>Variant Price</strong> 改成 Promotion 優惠價；<strong>Variant Compare At Price 保持原值</strong>。同商品其他 Variant 會一併帶出但價格不變，Variant Image 不輸出。
+          </div>
+
+          <div class="mt-5 overflow-x-auto">
+            <table class="min-w-full text-left text-sm">
+              <thead class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+              <tr><th class="px-3 py-3">SKU</th><th class="px-3 py-3">Promotion 商品</th><th class="px-3 py-3">Shopify 商品</th><th class="px-3 py-3 text-right">Shopify 價格</th><th class="px-3 py-3 text-right">活動價</th><th class="px-3 py-3">狀態</th></tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
               <tr v-for="item in filteredResults" :key="`${item.sku}-${item.sourceRow}`" class="align-top hover:bg-slate-50/70">
                 <td class="whitespace-nowrap px-3 py-3 font-mono text-xs font-semibold text-slate-800">{{ item.sku }}</td>
                 <td class="min-w-64 px-3 py-3 text-slate-700"><div>{{ item.name || '—' }}</div><div class="mt-1 text-xs text-slate-400">{{ item.discountLabel }}</div></td>
@@ -212,10 +381,92 @@ function badgeClass(status) {
                 <td class="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums">{{ item.promotionPrice }}</td>
                 <td class="min-w-48 px-3 py-3"><span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset" :class="badgeClass(item.status)">{{ item.statusLabel }}</span><div v-if="item.note" class="mt-2 text-xs leading-5 text-slate-500">{{ item.note }}</div></td>
               </tr>
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </template>
+    </section>
+
+    <section class="space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Normal</p>
+        <h3 class="mt-1 text-xl font-bold text-slate-950">活動結束</h3>
+        <p class="mt-2 text-sm leading-6 text-slate-500">
+          先在 Shopify 用活動 Tag 篩選本次活動商品並重新匯出最新 CSV。這份最新資料會保留活動期間變動後的庫存。
+        </p>
+      </div>
+
+      <div v-if="normalErrorMessage" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        {{ normalErrorMessage }}
+      </div>
+
+      <div class="grid gap-5 lg:grid-cols-2">
+        <FileUploadCard
+            title="活動結束 Shopify CSV"
+            description="請先用活動 Tag 篩選商品，再從 Shopify 匯出最新資料。"
+            :filename="normalShopifyFileName"
+            :row-count="normalShopifyRows.length"
+            @change="handleNormalShopifyFile"
+        />
+
+        <section class="rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
+          <label class="block text-sm font-semibold text-slate-800">移除活動 Tags</label>
+          <div class="mt-2 flex gap-2">
+            <input
+                v-model="removeTagInput"
+                type="text"
+                placeholder="輸入要移除的活動 Tag"
+                class="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
+                @keydown="handleRemoveTagKeydown"
+            >
+            <button type="button" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700" @click="addRemoveTag">
+              新增
+            </button>
+          </div>
+
+          <div v-if="removedTags.length" class="mt-3 flex flex-wrap gap-2">
+            <button
+                v-for="(tag, index) in removedTags"
+                :key="`${tag}-${index}`"
+                type="button"
+                class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
+                @click="removeNormalTag(index)"
+            >
+              {{ tag }} <span class="text-slate-400">×</span>
+            </button>
+          </div>
+
+          <p class="mt-3 text-xs leading-5 text-slate-500">只移除你指定的 Tag，其他 Shopify Tags 原樣保留。</p>
+        </section>
+      </div>
+
+      <div v-if="normalShopifyRows.length" class="grid gap-4 sm:grid-cols-2">
+        <div class="rounded-2xl bg-slate-50 p-5">
+          <p class="text-sm text-slate-500">Variant 數量</p>
+          <p class="mt-2 text-3xl font-bold">{{ normalVariantCount }}</p>
         </div>
-      </section>
-    </template>
+        <div class="rounded-2xl bg-slate-50 p-5">
+          <p class="text-sm text-slate-500">Compare At Price 空白</p>
+          <p class="mt-2 text-3xl font-bold" :class="normalCompareAtMissingCount ? 'text-amber-700' : 'text-emerald-700'">{{ normalCompareAtMissingCount }}</p>
+          <p class="mt-2 text-xs leading-5 text-slate-500">空白的 Variant 不會覆寫 Variant Price。</p>
+        </div>
+      </div>
+
+      <div class="rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
+        NORMAL 會把有效的 <strong>Variant Compare At Price 複製到 Variant Price</strong>，Compare At Price 本身保持不變；庫存與其他目前資料採用你剛匯出的最新 Shopify CSV，Variant Image 不輸出。
+      </div>
+
+      <div class="flex justify-start">
+        <button
+            type="button"
+            :disabled="!normalImportRows.length"
+            class="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+            @click="exportNormalCsv"
+        >
+          匯出 NORMAL CSV
+        </button>
+      </div>
+    </section>
   </section>
 </template>
