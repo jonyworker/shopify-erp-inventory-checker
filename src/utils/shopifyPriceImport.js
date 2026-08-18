@@ -149,19 +149,16 @@ export function buildShopifyPriceImportRows({
 
     const sku = normalizeCode(item.sku)
     const rrpPrice = normalizePrice(item.rrpPrice)
-    const shopifyPrice = normalizePrice(item.shopifyPrice)
 
     if (
         !sku ||
-        rrpPrice === null ||
-        shopifyPrice === null
+        rrpPrice === null
     ) {
       return
     }
 
     priceUpdateMap.set(sku, {
-      rrpPrice,
-      shopifyPrice
+      rrpPrice
     })
   })
 
@@ -281,28 +278,18 @@ export function buildShopifyPriceImportRows({
      */
     if (priceUpdate) {
       const {
-        rrpPrice,
-        shopifyPrice
+        rrpPrice
       } = priceUpdate
 
-      /**
-       * Variant Price 更新為 RRP Retail Price。
-       */
-      variantPrice =
+      const priceText =
           formatShopifyPrice(rrpPrice)
 
       /**
-       * Variant Compare At Price 規則：
-       *
-       * RRP 大於 Shopify 原始 Variant Price
-       * → 清空。
-       *
-       * RRP 小於或等於 Shopify 原始 Variant Price
-       * → 保留 Shopify 原始值。
+       * Variant Price 與 Variant Compare At Price
+       * 都統一更新為 RRP Retail Price。
        */
-      if (rrpPrice > shopifyPrice) {
-        variantCompareAtPrice = ''
-      }
+      variantPrice = priceText
+      variantCompareAtPrice = priceText
     }
 
     /**
