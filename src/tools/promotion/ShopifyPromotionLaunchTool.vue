@@ -167,7 +167,7 @@ function badgeClass(status) {
   <section class="space-y-6">
     <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <p class="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Shopify Promotion</p>
-      <h2 class="mt-2 text-2xl font-bold text-slate-950">商品上架</h2>
+      <h2 class="mt-2 text-2xl font-bold text-slate-950">Promotion 商品上架</h2>
       <p class="mt-2 text-sm leading-6 text-slate-500">
         活動開始時使用。比對 Promotion 與 Shopify 商品，將活動 SKU 的 Variant Price 改為優惠價，Compare At Price 保持公司 RRP。
       </p>

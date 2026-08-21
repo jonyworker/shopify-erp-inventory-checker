@@ -18,7 +18,7 @@ const BASE_EXPORT_COLUMNS = [
     'Option3 Linked To',
 
     'Variant SKU',
-    'Variant Inventory Qty',
+    // 'Variant Inventory Qty',
     'Variant Price',
     'Variant Compare At Price'
 ]
@@ -981,32 +981,26 @@ export function buildPromotionIssueRows(
         )
 
         .map(item => ({
-            活動工作表:
-            item.sourceSheet,
+            "活動工作表": item.sourceSheet,
 
-            SKU:
-            item.sku,
+            "SKU": item.sku,
 
-            Promotion商品名稱:
-            item.name,
+            'Promotion商品名稱': item.name,
 
-            折扣區段:
-            item.discountLabel,
+            "折扣區段": item.discountLabel,
 
-            RetailPrice:
-                item.retailPrice ?? '',
+            "RetailPrice": item.retailPrice ?? '',
 
-            PromotionPrice:
-                item.promotionPrice ?? '',
+            "PromotionPrice": item.promotionPrice ?? '',
 
-            ShopifyHandle:
+            "ShopifyHandle":
                 item.handle ||
                 (
                     item.handles ||
                     []
                 ).join(' / '),
 
-            Shopify商品名稱:
+            "Shopify商品名稱":
                 item.shopifyTitle ||
                 (
                     item.products ||
@@ -1019,7 +1013,7 @@ export function buildPromotionIssueRows(
                     .filter(Boolean)
                     .join(' / '),
 
-            Published:
+            "Published":
                 item.published ||
                 (
                     item.products ||
@@ -1032,7 +1026,7 @@ export function buildPromotionIssueRows(
                     .filter(Boolean)
                     .join(' / '),
 
-            Status:
+            "Status":
                 item.shopifyStatus ||
                 (
                     item.products ||
@@ -1045,10 +1039,10 @@ export function buildPromotionIssueRows(
                     .filter(Boolean)
                     .join(' / '),
 
-            問題:
+            "問題":
             item.statusLabel,
 
-            備註:
+            "備註":
             item.note
         }))
 }

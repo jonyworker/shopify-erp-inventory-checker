@@ -49,11 +49,11 @@ const toolGroups = [
     description: '活動商品上架與下架管理',
     tools: [
       {
-        label: '商品上架',
+        label: 'Promotion 商品上架',
         value: 'shopifyPromotionLaunch'
       },
       {
-        label: '商品下架',
+        label: 'Promotion 商品下架',
         value: 'shopifyPromotionEnd'
       }
     ]
