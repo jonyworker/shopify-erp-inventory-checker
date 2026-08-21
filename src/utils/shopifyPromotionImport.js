@@ -29,6 +29,11 @@ const LINKED_TO_COLUMNS = [
     'Option3 Linked To'
 ]
 
+const PRICE_COLUMNS = [
+    'Variant Price',
+    'Variant Compare At Price'
+]
+
 function normalizeText(value) {
     return String(value ?? '').trim()
 }
@@ -53,12 +58,22 @@ export function normalizePrice(value) {
         : null
 }
 
+/**
+ * Shopify 價格輸出格式。
+ *
+ * 有效價格固定輸出兩位小數：
+ *
+ * 4200 → 4200.00
+ * 3696 → 3696.00
+ *
+ * 空白維持空白。
+ */
 function formatShopifyPrice(value) {
     const price = normalizePrice(value)
 
     return price === null
         ? ''
-        : String(price)
+        : price.toFixed(2)
 }
 
 function firstNonEmpty(rows, column) {
@@ -605,6 +620,16 @@ function findLinkedMetafieldColumns(
     )
 }
 
+/**
+ * 只保留 Shopify 匯出需要的欄位。
+ *
+ * Variant Price 與 Variant Compare At Price
+ * 在這裡統一格式為兩位小數。
+ *
+ * 因此 START / END 產生的 CSV，
+ * 不論價格是否有被修改，
+ * 都會維持一致格式。
+ */
 function pickExportColumns(
     sourceRow,
     exportColumns
@@ -612,15 +637,27 @@ function pickExportColumns(
     const result = {}
 
     exportColumns.forEach(column => {
-        result[column] =
+        const value =
             sourceRow[column] ?? ''
+
+        if (
+            PRICE_COLUMNS.includes(column)
+        ) {
+            result[column] =
+                formatShopifyPrice(value)
+
+            return
+        }
+
+        result[column] =
+            value
     })
 
     return result
 }
 
 /**
- * SALE
+ * START
  *
  * 活動開始時使用。
  *
@@ -794,7 +831,7 @@ export function buildShopifyPromotionImportRows({
                 variantPrice,
 
                 // Compare At Price 視為公司 RRP。
-                // SALE 時完全保留 Shopify 原值。
+                // START 時完全保留 Shopify 原值。
                 'Variant Compare At Price':
                     row[
                         'Variant Compare At Price'
@@ -809,7 +846,7 @@ export function buildShopifyPromotionImportRows({
 }
 
 /**
- * NORMAL
+ * END
  *
  * 活動結束時使用。
  *
@@ -834,11 +871,11 @@ export function buildShopifyPromotionImportRows({
  * - Variant Image：
  *   不輸出
  */
-export function buildShopifyPromotionNormalRows({
-                                                    shopifyRows,
-                                                    removedTags = [],
-                                                    skuColumn = 'Variant SKU'
-                                                }) {
+export function buildShopifyPromotionEndRows({
+                                                 shopifyRows,
+                                                 removedTags = [],
+                                                 skuColumn = 'Variant SKU'
+                                             }) {
     const targetHandles =
         new Set(
             shopifyRows
@@ -981,26 +1018,32 @@ export function buildPromotionIssueRows(
         )
 
         .map(item => ({
-            "活動工作表": item.sourceSheet,
+            '活動工作表':
+            item.sourceSheet,
 
-            "SKU": item.sku,
+            'SKU':
+            item.sku,
 
-            'Promotion商品名稱': item.name,
+            'Promotion商品名稱':
+            item.name,
 
-            "折扣區段": item.discountLabel,
+            '折扣區段':
+            item.discountLabel,
 
-            "RetailPrice": item.retailPrice ?? '',
+            'RetailPrice':
+                item.retailPrice ?? '',
 
-            "PromotionPrice": item.promotionPrice ?? '',
+            'PromotionPrice':
+                item.promotionPrice ?? '',
 
-            "ShopifyHandle":
+            'ShopifyHandle':
                 item.handle ||
                 (
                     item.handles ||
                     []
                 ).join(' / '),
 
-            "Shopify商品名稱":
+            'Shopify商品名稱':
                 item.shopifyTitle ||
                 (
                     item.products ||
@@ -1013,7 +1056,7 @@ export function buildPromotionIssueRows(
                     .filter(Boolean)
                     .join(' / '),
 
-            "Published":
+            'Published':
                 item.published ||
                 (
                     item.products ||
@@ -1026,7 +1069,7 @@ export function buildPromotionIssueRows(
                     .filter(Boolean)
                     .join(' / '),
 
-            "Status":
+            'Status':
                 item.shopifyStatus ||
                 (
                     item.products ||
@@ -1039,10 +1082,10 @@ export function buildPromotionIssueRows(
                     .filter(Boolean)
                     .join(' / '),
 
-            "問題":
+            '問題':
             item.statusLabel,
 
-            "備註":
+            '備註':
             item.note
         }))
 }

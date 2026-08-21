@@ -22,11 +22,11 @@ const tagInput = ref('')
 const addedTags = ref([])
 
 const selectedPromotionRows = computed(() =>
-  promotionSheets.value.find(sheet => sheet.name === selectedSheet.value)?.rows || []
+    promotionSheets.value.find(sheet => sheet.name === selectedSheet.value)?.rows || []
 )
 
 const canCompare = computed(() =>
-  selectedPromotionRows.value.length > 0 && shopifyRows.value.length > 0
+    selectedPromotionRows.value.length > 0 && shopifyRows.value.length > 0
 )
 
 const summary = computed(() => ({
@@ -35,7 +35,7 @@ const summary = computed(() => ({
   notPublished: results.value.filter(item => item.status === 'not-published').length,
   missing: results.value.filter(item => item.status === 'missing').length,
   duplicate: results.value.filter(item =>
-    item.status === 'duplicate-shopify' || item.status === 'promotion-duplicate'
+      item.status === 'duplicate-shopify' || item.status === 'promotion-duplicate'
   ).length
 }))
 
@@ -45,22 +45,22 @@ const filteredResults = computed(() => {
   return results.value.filter(item => {
     const matchStatus = statusFilter.value === 'all' || item.status === statusFilter.value
     const matchKeyword = !text || [item.sku, item.name, item.shopifyTitle, item.handle, item.statusLabel]
-      .some(value => String(value ?? '').toLowerCase().includes(text))
+        .some(value => String(value ?? '').toLowerCase().includes(text))
 
     return matchStatus && matchKeyword
   })
 })
 
-const saleImportRows = computed(() =>
-  buildShopifyPromotionImportRows({
-    shopifyRows: shopifyRows.value,
-    compareResults: results.value,
-    addedTags: addedTags.value
-  })
+const startImportRows = computed(() =>
+    buildShopifyPromotionImportRows({
+      shopifyRows: shopifyRows.value,
+      compareResults: results.value,
+      addedTags: addedTags.value
+    })
 )
 
 const issueRows = computed(() =>
-  buildPromotionIssueRows(results.value)
+    buildPromotionIssueRows(results.value)
 )
 
 function resetResults() {
@@ -105,13 +105,13 @@ function runCompare() {
 
 function addTag() {
   tagInput.value
-    .split(',')
-    .map(tag => tag.trim())
-    .filter(Boolean)
-    .forEach(tag => {
-      const exists = addedTags.value.some(current => current.toLowerCase() === tag.toLowerCase())
-      if (!exists) addedTags.value.push(tag)
-    })
+      .split(',')
+      .map(tag => tag.trim())
+      .filter(Boolean)
+      .forEach(tag => {
+        const exists = addedTags.value.some(current => current.toLowerCase() === tag.toLowerCase())
+        if (!exists) addedTags.value.push(tag)
+      })
 
   tagInput.value = ''
 }
@@ -131,13 +131,13 @@ function safeSheetName() {
   return selectedSheet.value.replace(/[^\w\-\u4e00-\u9fff]+/g, '_')
 }
 
-function exportSaleCsv() {
-  if (!saleImportRows.value.length) return
+function exportStartCsv() {
+  if (!startImportRows.value.length) return
 
   downloadCsv(
-    `Shopify_Promotion_SALE_${safeSheetName()}.csv`,
-    saleImportRows.value,
-    { withBom: true }
+      `Shopify_Promotion_START_${safeSheetName()}.csv`,
+      startImportRows.value,
+      { withBom: true }
   )
 }
 
@@ -145,8 +145,8 @@ function exportIssues() {
   if (!issueRows.value.length) return
 
   downloadExcel(
-    `Promotion_Issues_${safeSheetName()}.xlsx`,
-    issueRows.value
+      `Promotion_Issues_${safeSheetName()}.xlsx`,
+      issueRows.value
   )
 }
 
@@ -179,19 +179,19 @@ function badgeClass(status) {
 
     <div class="grid gap-5 lg:grid-cols-2">
       <FileUploadCard
-        title="Promotion Excel"
-        description="讀取活動 SKU 與表格中的優惠價格；支援同工作表多個折扣區段。"
-        :filename="promotionFileName"
-        :row-count="selectedPromotionRows.length"
-        @change="handlePromotionFile"
+          title="Promotion Excel"
+          description="讀取活動 SKU 與表格中的優惠價格；支援同工作表多個折扣區段。"
+          :filename="promotionFileName"
+          :row-count="selectedPromotionRows.length"
+          @change="handlePromotionFile"
       />
 
       <FileUploadCard
-        title="Shopify All Products"
-        description="使用 Shopify 匯出的完整商品 CSV，比對 Variant SKU、商品狀態與 Tags。"
-        :filename="shopifyFileName"
-        :row-count="shopifyRows.length"
-        @change="handleShopifyFile"
+          title="Shopify All Products"
+          description="使用 Shopify 匯出的完整商品 CSV，比對 Variant SKU、商品狀態與 Tags。"
+          :filename="shopifyFileName"
+          :row-count="shopifyRows.length"
+          @change="handleShopifyFile"
       />
     </div>
 
@@ -199,9 +199,9 @@ function badgeClass(status) {
       <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <label class="block text-sm font-semibold text-slate-800">選擇 Promotion Excel 工作表</label>
         <select
-          v-model="selectedSheet"
-          class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
-          @change="resetResults"
+            v-model="selectedSheet"
+            class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
+            @change="resetResults"
         >
           <option v-for="sheet in promotionSheets" :key="sheet.name" :value="sheet.name">
             {{ sheet.name }}（{{ sheet.rows.length }} SKU）
@@ -214,11 +214,11 @@ function badgeClass(status) {
         <label class="block text-sm font-semibold text-slate-800">新增活動 Tags</label>
         <div class="mt-2 flex gap-2">
           <input
-            v-model="tagInput"
-            type="text"
-            placeholder="例如：2026_AUG_DOUBLE"
-            class="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
-            @keydown="handleTagKeydown"
+              v-model="tagInput"
+              type="text"
+              placeholder="例如：2026_AUG_DOUBLE"
+              class="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
+              @keydown="handleTagKeydown"
           >
           <button type="button" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700" @click="addTag">
             新增
@@ -227,11 +227,11 @@ function badgeClass(status) {
 
         <div v-if="addedTags.length" class="mt-3 flex flex-wrap gap-2">
           <button
-            v-for="(tag, index) in addedTags"
-            :key="`${tag}-${index}`"
-            type="button"
-            class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
-            @click="removeTag(index)"
+              v-for="(tag, index) in addedTags"
+              :key="`${tag}-${index}`"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+              @click="removeTag(index)"
           >
             {{ tag }} <span class="text-slate-400">×</span>
           </button>
@@ -243,10 +243,10 @@ function badgeClass(status) {
 
     <div class="flex justify-end">
       <button
-        type="button"
-        :disabled="!canCompare"
-        class="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-        @click="runCompare"
+          type="button"
+          :disabled="!canCompare"
+          class="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+          @click="runCompare"
       >
         開始比對
       </button>
@@ -279,7 +279,7 @@ function badgeClass(status) {
             <button type="button" :disabled="!issueRows.length" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40" @click="exportIssues">
               匯出異常清單 Excel
             </button>
-            <button type="button" :disabled="!saleImportRows.length" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-40" @click="exportSaleCsv">
+            <button type="button" :disabled="!startImportRows.length" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-40" @click="exportStartCsv">
               匯出商品上架 CSV
             </button>
           </div>
@@ -292,17 +292,17 @@ function badgeClass(status) {
         <div class="mt-5 overflow-x-auto">
           <table class="min-w-full text-left text-sm">
             <thead class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-              <tr><th class="px-3 py-3">SKU</th><th class="px-3 py-3">Promotion 商品</th><th class="px-3 py-3">Shopify 商品</th><th class="px-3 py-3 text-right">Shopify 價格</th><th class="px-3 py-3 text-right">活動價</th><th class="px-3 py-3">狀態</th></tr>
+            <tr><th class="px-3 py-3">SKU</th><th class="px-3 py-3">Promotion 商品</th><th class="px-3 py-3">Shopify 商品</th><th class="px-3 py-3 text-right">Shopify 價格</th><th class="px-3 py-3 text-right">活動價</th><th class="px-3 py-3">狀態</th></tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
-              <tr v-for="item in filteredResults" :key="`${item.sku}-${item.sourceRow}`" class="align-top hover:bg-slate-50/70">
-                <td class="whitespace-nowrap px-3 py-3 font-mono text-xs font-semibold text-slate-800">{{ item.sku }}</td>
-                <td class="min-w-64 px-3 py-3 text-slate-700"><div>{{ item.name || '—' }}</div><div class="mt-1 text-xs text-slate-400">{{ item.discountLabel }}</div></td>
-                <td class="min-w-64 px-3 py-3 text-slate-700"><div>{{ item.shopifyTitle || '—' }}</div><div v-if="item.handle" class="mt-1 text-xs text-slate-400">{{ item.handle }}</div><div v-else-if="item.handles?.length" class="mt-1 text-xs text-slate-400">{{ item.handles.join(' / ') }}</div></td>
-                <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums">{{ item.shopifyPrice ?? '—' }}</td>
-                <td class="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums">{{ item.promotionPrice }}</td>
-                <td class="min-w-48 px-3 py-3"><span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset" :class="badgeClass(item.status)">{{ item.statusLabel }}</span><div v-if="item.note" class="mt-2 text-xs leading-5 text-slate-500">{{ item.note }}</div></td>
-              </tr>
+            <tr v-for="item in filteredResults" :key="`${item.sku}-${item.sourceRow}`" class="align-top hover:bg-slate-50/70">
+              <td class="whitespace-nowrap px-3 py-3 font-mono text-xs font-semibold text-slate-800">{{ item.sku }}</td>
+              <td class="min-w-64 px-3 py-3 text-slate-700"><div>{{ item.name || '—' }}</div><div class="mt-1 text-xs text-slate-400">{{ item.discountLabel }}</div></td>
+              <td class="min-w-64 px-3 py-3 text-slate-700"><div>{{ item.shopifyTitle || '—' }}</div><div v-if="item.handle" class="mt-1 text-xs text-slate-400">{{ item.handle }}</div><div v-else-if="item.handles?.length" class="mt-1 text-xs text-slate-400">{{ item.handles.join(' / ') }}</div></td>
+              <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums">{{ item.shopifyPrice ?? '—' }}</td>
+              <td class="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums">{{ item.promotionPrice }}</td>
+              <td class="min-w-48 px-3 py-3"><span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset" :class="badgeClass(item.status)">{{ item.statusLabel }}</span><div v-if="item.note" class="mt-2 text-xs leading-5 text-slate-500">{{ item.note }}</div></td>
+            </tr>
             </tbody>
           </table>
         </div>

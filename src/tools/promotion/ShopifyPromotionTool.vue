@@ -5,7 +5,7 @@ import { downloadCsv, downloadExcel, parseDataFile } from '@/utils/fileParser'
 import {
   buildPromotionIssueRows,
   buildShopifyPromotionImportRows,
-  buildShopifyPromotionNormalRows,
+  buildShopifyPromotionEndRows,
   comparePromotionWithShopify,
   parsePromotionWorkbook
 } from '@/utils/shopifyPromotionImport'
@@ -22,11 +22,11 @@ const statusFilter = ref('all')
 const tagInput = ref('')
 const addedTags = ref([])
 
-const normalShopifyFileName = ref('')
-const normalShopifyRows = ref([])
+const endShopifyFileName = ref('')
+const endShopifyRows = ref([])
 const removeTagInput = ref('')
 const removedTags = ref([])
-const normalErrorMessage = ref('')
+const endErrorMessage = ref('')
 
 const selectedPromotionRows = computed(() => promotionSheets.value.find(sheet => sheet.name === selectedSheet.value)?.rows || [])
 const canCompare = computed(() => selectedPromotionRows.value.length > 0 && shopifyRows.value.length > 0)
@@ -51,7 +51,7 @@ const filteredResults = computed(() => {
   })
 })
 
-const saleImportRows = computed(() =>
+const startImportRows = computed(() =>
     buildShopifyPromotionImportRows({
       shopifyRows: shopifyRows.value,
       compareResults: results.value,
@@ -59,19 +59,19 @@ const saleImportRows = computed(() =>
     })
 )
 
-const normalImportRows = computed(() =>
-    buildShopifyPromotionNormalRows({
-      shopifyRows: normalShopifyRows.value,
+const endImportRows = computed(() =>
+    buildShopifyPromotionEndRows({
+      shopifyRows: endShopifyRows.value,
       removedTags: removedTags.value
     })
 )
 
-const normalVariantCount = computed(() =>
-    normalShopifyRows.value.filter(row => String(row['Variant SKU'] ?? '').trim()).length
+const endVariantCount = computed(() =>
+    endShopifyRows.value.filter(row => String(row['Variant SKU'] ?? '').trim()).length
 )
 
-const normalCompareAtMissingCount = computed(() =>
-    normalShopifyRows.value.filter(row => {
+const endCompareAtMissingCount = computed(() =>
+    endShopifyRows.value.filter(row => {
       const sku = String(row['Variant SKU'] ?? '').trim()
       const compareAtPrice = String(row['Variant Compare At Price'] ?? '').trim()
       return sku && !compareAtPrice
@@ -113,14 +113,14 @@ async function handleShopifyFile(file) {
   }
 }
 
-async function handleNormalShopifyFile(file) {
+async function handleEndShopifyFile(file) {
   try {
-    normalErrorMessage.value = ''
-    normalShopifyFileName.value = file.name
-    normalShopifyRows.value = await parseDataFile(file)
+    endErrorMessage.value = ''
+    endShopifyFileName.value = file.name
+    endShopifyRows.value = await parseDataFile(file)
   } catch (error) {
     console.error(error)
-    normalErrorMessage.value = '活動結束 CSV 解析失敗，請確認檔案為 Shopify 匯出的商品 CSV。'
+    endErrorMessage.value = '活動結束 CSV 解析失敗，請確認檔案為 Shopify 匯出的商品 CSV。'
   }
 }
 
@@ -177,7 +177,7 @@ function handleRemoveTagKeydown(event) {
   }
 }
 
-function removeNormalTag(index) {
+function removeEndTag(index) {
   removedTags.value.splice(index, 1)
 }
 
@@ -185,27 +185,32 @@ function safeSheetName() {
   return selectedSheet.value.replace(/[^\w\-\u4e00-\u9fff]+/g, '_')
 }
 
-function safeNormalFileName() {
-  const baseName = normalShopifyFileName.value.replace(/\.[^.]+$/, '')
+function safeEndFileName() {
+  const baseName = endShopifyFileName.value
+      .replace(/\.[^.]+$/, '')
+      .replace(/^Shopify_Promotion_END_SOURCE_/i, '')
+      .replace(/^Shopify_Promotion_END_/i, '')
+      .replace(/^Shopify_Promotion_NORMAL_/i, '')
+
   return baseName.replace(/[^\w\-\u4e00-\u9fff]+/g, '_') || 'Promotion'
 }
 
-function exportSaleCsv() {
-  if (!saleImportRows.value.length) return
+function exportStartCsv() {
+  if (!startImportRows.value.length) return
 
   downloadCsv(
-      `Shopify_Promotion_SALE_${safeSheetName()}.csv`,
-      saleImportRows.value,
+      `Shopify_Promotion_START_${safeSheetName()}.csv`,
+      startImportRows.value,
       { withBom: true }
   )
 }
 
-function exportNormalCsv() {
-  if (!normalImportRows.value.length) return
+function exportEndCsv() {
+  if (!endImportRows.value.length) return
 
   downloadCsv(
-      `Shopify_Promotion_NORMAL_${safeNormalFileName()}.csv`,
-      normalImportRows.value,
+      `Shopify_Promotion_END_${safeEndFileName()}.csv`,
+      endImportRows.value,
       { withBom: true }
   )
 }
@@ -238,13 +243,13 @@ function badgeClass(status) {
       <p class="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Shopify Promotion</p>
       <h2 class="mt-2 text-2xl font-bold text-slate-950">活動商品上架</h2>
       <p class="mt-2 text-sm leading-6 text-slate-500">
-        SALE 用 Promotion 優惠價啟動活動；NORMAL 使用活動結束時 Shopify 最新匯出資料恢復正常售價。
+        START 用 Promotion 優惠價啟動活動；END 使用活動結束時 Shopify 最新匯出資料恢復正常售價。
       </p>
     </div>
 
     <section class="space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <div>
-        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Sale</p>
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Start</p>
         <h3 class="mt-1 text-xl font-bold text-slate-950">活動開始</h3>
         <p class="mt-2 text-sm leading-6 text-slate-500">
           Variant Price 改為 Promotion 優惠價；Variant Compare At Price 視為公司 RRP 並保持不變。
@@ -357,14 +362,14 @@ function badgeClass(status) {
               <button type="button" :disabled="!issueRows.length" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40" @click="exportIssues">
                 匯出異常清單 Excel
               </button>
-              <button type="button" :disabled="!saleImportRows.length" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-40" @click="exportSaleCsv">
-                匯出 SALE CSV
+              <button type="button" :disabled="!startImportRows.length" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-40" @click="exportStartCsv">
+                匯出 START CSV
               </button>
             </div>
           </div>
 
           <div class="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
-            SALE 只把活動 SKU 的 <strong>Variant Price</strong> 改成 Promotion 優惠價；<strong>Variant Compare At Price 保持原值</strong>。同商品其他 Variant 會一併帶出但價格不變，Variant Image 不輸出。
+            START 只把活動 SKU 的 <strong>Variant Price</strong> 改成 Promotion 優惠價；<strong>Variant Compare At Price 保持原值</strong>。同商品其他 Variant 會一併帶出但價格不變，Variant Image 不輸出。
           </div>
 
           <div class="mt-5 overflow-x-auto">
@@ -390,24 +395,24 @@ function badgeClass(status) {
 
     <section class="space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <div>
-        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Normal</p>
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">End</p>
         <h3 class="mt-1 text-xl font-bold text-slate-950">活動結束</h3>
         <p class="mt-2 text-sm leading-6 text-slate-500">
           先在 Shopify 用活動 Tag 篩選本次活動商品並重新匯出最新 CSV。這份最新資料會保留活動期間變動後的庫存。
         </p>
       </div>
 
-      <div v-if="normalErrorMessage" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-        {{ normalErrorMessage }}
+      <div v-if="endErrorMessage" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        {{ endErrorMessage }}
       </div>
 
       <div class="grid gap-5 lg:grid-cols-2">
         <FileUploadCard
             title="活動結束 Shopify CSV"
             description="請先用活動 Tag 篩選商品，再從 Shopify 匯出最新資料。"
-            :filename="normalShopifyFileName"
-            :row-count="normalShopifyRows.length"
-            @change="handleNormalShopifyFile"
+            :filename="endShopifyFileName"
+            :row-count="endShopifyRows.length"
+            @change="handleEndShopifyFile"
         />
 
         <section class="rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
@@ -431,7 +436,7 @@ function badgeClass(status) {
                 :key="`${tag}-${index}`"
                 type="button"
                 class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
-                @click="removeNormalTag(index)"
+                @click="removeEndTag(index)"
             >
               {{ tag }} <span class="text-slate-400">×</span>
             </button>
@@ -441,30 +446,30 @@ function badgeClass(status) {
         </section>
       </div>
 
-      <div v-if="normalShopifyRows.length" class="grid gap-4 sm:grid-cols-2">
+      <div v-if="endShopifyRows.length" class="grid gap-4 sm:grid-cols-2">
         <div class="rounded-2xl bg-slate-50 p-5">
           <p class="text-sm text-slate-500">Variant 數量</p>
-          <p class="mt-2 text-3xl font-bold">{{ normalVariantCount }}</p>
+          <p class="mt-2 text-3xl font-bold">{{ endVariantCount }}</p>
         </div>
         <div class="rounded-2xl bg-slate-50 p-5">
           <p class="text-sm text-slate-500">Compare At Price 空白</p>
-          <p class="mt-2 text-3xl font-bold" :class="normalCompareAtMissingCount ? 'text-amber-700' : 'text-emerald-700'">{{ normalCompareAtMissingCount }}</p>
+          <p class="mt-2 text-3xl font-bold" :class="endCompareAtMissingCount ? 'text-amber-700' : 'text-emerald-700'">{{ endCompareAtMissingCount }}</p>
           <p class="mt-2 text-xs leading-5 text-slate-500">空白的 Variant 不會覆寫 Variant Price。</p>
         </div>
       </div>
 
       <div class="rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
-        NORMAL 會把有效的 <strong>Variant Compare At Price 複製到 Variant Price</strong>，Compare At Price 本身保持不變；庫存與其他目前資料採用你剛匯出的最新 Shopify CSV，Variant Image 不輸出。
+        END 會把有效的 <strong>Variant Compare At Price 複製到 Variant Price</strong>，Compare At Price 本身保持不變；庫存與其他目前資料採用你剛匯出的最新 Shopify CSV，Variant Image 不輸出。
       </div>
 
       <div class="flex justify-start">
         <button
             type="button"
-            :disabled="!normalImportRows.length"
+            :disabled="!endImportRows.length"
             class="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-            @click="exportNormalCsv"
+            @click="exportEndCsv"
         >
-          匯出 NORMAL CSV
+          匯出 END CSV
         </button>
       </div>
     </section>
