@@ -6,7 +6,7 @@
  * 注意：
  * 欄位名稱必須與 Shopify CSV 原始欄位名稱完全相同。
  */
-const EXPORT_COLUMNS = [
+const BASE_EXPORT_COLUMNS = [
   'Handle',
   'Title',
 
@@ -54,25 +54,82 @@ function normalizePrice(value) {
       : null
 }
 
+const LINKED_TO_COLUMNS = [
+  'Option1 Linked To',
+  'Option2 Linked To',
+  'Option3 Linked To'
+]
+
+const PRICE_COLUMNS = [
+  'Variant Price',
+  'Variant Compare At Price'
+]
+
 function formatShopifyPrice(value) {
   const numberValue = normalizePrice(value)
 
   if (numberValue === null) return ''
 
-  return String(numberValue)
+  return numberValue.toFixed(2)
+}
+
+function getShopifyColumns(shopifyRows) {
+  const columns = []
+  const seen = new Set()
+
+  shopifyRows.forEach(row => {
+    Object.keys(row || {}).forEach(column => {
+      if (seen.has(column)) return
+
+      seen.add(column)
+      columns.push(column)
+    })
+  })
+
+  return columns
+}
+
+function findLinkedMetafieldColumns(shopifyRows, targetHandles) {
+  const shopifyColumns = getShopifyColumns(shopifyRows)
+  const linkedTargets = new Set()
+
+  shopifyRows.forEach(row => {
+    const handle = normalizeText(row.Handle)
+
+    if (!targetHandles.has(handle)) return
+
+    LINKED_TO_COLUMNS.forEach(column => {
+      const linkedTo = normalizeText(row[column])
+
+      if (linkedTo) linkedTargets.add(linkedTo)
+    })
+  })
+
+  return shopifyColumns.filter(column => {
+    return [...linkedTargets].some(linkedTo =>
+        column.includes(`(${linkedTo})`)
+    )
+  })
 }
 
 /**
- * 依照 EXPORT_COLUMNS 產生最終輸出資料列。
+ * 只保留 Shopify 匯出需要的欄位。
  *
- * @param {Object} sourceRow
- * @returns {Object}
+ * Variant Price 與 Variant Compare At Price
+ * 統一輸出為兩位小數，與 Promotion 工具一致。
  */
-function pickExportColumns(sourceRow) {
+function pickExportColumns(sourceRow, exportColumns) {
   const result = {}
 
-  EXPORT_COLUMNS.forEach(column => {
-    result[column] = sourceRow[column] ?? ''
+  exportColumns.forEach(column => {
+    const value = sourceRow[column] ?? ''
+
+    if (PRICE_COLUMNS.includes(column)) {
+      result[column] = formatShopifyPrice(value)
+      return
+    }
+
+    result[column] = value
   })
 
   return result
@@ -196,7 +253,7 @@ export function buildShopifyPriceImportRows({
    */
   const titleByHandle = new Map()
 
-  shopifyRows.forEach(row => {
+ shopifyRows.forEach(row => {
     const handle = normalizeText(row.Handle)
     const sku = normalizeCode(row[skuColumn])
     const title = normalizeText(row.Title)
@@ -225,6 +282,21 @@ export function buildShopifyPriceImportRows({
   if (!targetHandles.size) {
     return []
   }
+
+  /**
+   * 與 Promotion 工具相同：
+   * 如果 Option Linked To 指向 Shopify metafield，
+   * 自動把對應欄位一起帶入輸出。
+   */
+  const linkedMetafieldColumns = findLinkedMetafieldColumns(
+      shopifyRows,
+      targetHandles
+  )
+
+  const exportColumns = [
+    ...BASE_EXPORT_COLUMNS,
+    ...linkedMetafieldColumns
+  ]
 
   /**
    * 只保留：
@@ -309,6 +381,8 @@ export function buildShopifyPriceImportRows({
      * 建立完整的可輸出資料。
      */
     const outputRow = {
+      ...row,
+
       Handle: handle,
 
       Title: title,
@@ -356,6 +430,6 @@ export function buildShopifyPriceImportRows({
      * 1. 輸出哪些欄位
      * 2. 欄位排列順序
      */
-    return pickExportColumns(outputRow)
+    return pickExportColumns(outputRow, exportColumns)
   })
 }
