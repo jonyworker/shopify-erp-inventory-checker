@@ -12,8 +12,10 @@
   "dependencies": {
     "@vitejs/plugin-vue": "latest",
     "papaparse": "latest",
+    "pdfjs-dist": "latest",
     "vite": "latest",
     "vue": "latest",
+    "tesseract.js": "latest",
     "xlsx": "latest",
     "xlsx-js-style": "^1.2.0"
   },

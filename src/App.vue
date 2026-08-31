@@ -8,6 +8,7 @@ import PriceShopifyChecker from './tools/price/PriceShopifyChecker.vue'
 import PriceRutenChecker from './tools/price/PriceRutenChecker.vue'
 import ShopifyPromotionLaunchTool from './tools/promotion/ShopifyPromotionLaunchTool.vue'
 import ShopifyPromotionEndTool from './tools/promotion/ShopifyPromotionEndTool.vue'
+import CustomsDeclarationParser from './tools/customs/CustomsDeclarationParser.vue'
 
 const currentTool = ref('inventoryShopify')
 
@@ -58,6 +59,17 @@ const toolGroups = [
       }
     ]
   },
+
+  {
+    label: '報關工具',
+    description: '整理進出口報單與 Invoice 紀錄',
+    tools: [
+      {
+        label: '進出口報單整理',
+        value: 'customsDeclarationParser'
+      }
+    ]
+  },
   // {
   //   label: '未來工具',
   //   description: '預留後續擴充功能',
@@ -99,6 +111,9 @@ const currentComponent = computed(() => {
     case 'shopifyPromotionEnd':
       return ShopifyPromotionEndTool
 
+    case 'customsDeclarationParser':
+      return CustomsDeclarationParser
+
     default:
       return InventoryShopifyChecker
   }
@@ -119,7 +134,7 @@ const currentComponent = computed(() => {
           </h1>
 
           <p class="mt-2 text-sm text-slate-500">
-            庫存、價格與 Shopify 活動工具集中管理。
+            庫存、價格、Shopify 活動與報關工具集中管理。
           </p>
         </div>
 
