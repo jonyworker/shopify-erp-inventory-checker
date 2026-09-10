@@ -286,21 +286,17 @@ export function downloadPromotionPriceWorkbook(filename, sheetsWithResults) {
     const worksheet = XLSX.utils.aoa_to_sheet(rows)
     const range = XLSX.utils.decode_range(worksheet['!ref'])
 
-    worksheet['!cols'] = rows[0].map((_, index) => ({
-      wch: index === 0 ? 18 : index === 1 ? 54 : 20
-    }))
-
+    // 所有有內容的 cell 加外框
     for (let r = range.s.r; r <= range.e.r; r += 1) {
-      const firstCell = worksheet[XLSX.utils.encode_cell({ r, c: 0 })]
-      if (!firstCell || normalizeText(firstCell.v) !== '品項編碼') continue
-
       for (let c = range.s.c; c <= range.e.c; c += 1) {
         const address = XLSX.utils.encode_cell({ r, c })
-        if (!worksheet[address]) continue
-        worksheet[address].s = {
-          fill: { fgColor: { rgb: 'E2E8F0' } },
-          font: { bold: true, color: { rgb: '0F172A' } },
-          alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+        const cell = worksheet[address]
+
+        if (!cell) continue
+        if (cell.v === null || cell.v === undefined || cell.v === '') continue
+
+        cell.s = {
+          ...(cell.s || {}),
           border: {
             top: { style: 'thin', color: { rgb: 'CBD5E1' } },
             bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
@@ -311,7 +307,55 @@ export function downloadPromotionPriceWorkbook(filename, sheetsWithResults) {
       }
     }
 
-    XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name.slice(0, 31))
+    // 設定欄寬
+    worksheet['!cols'] = [
+      { wch: 14 }, // A 品項編碼
+      { wch: 48 }, // B 品項名稱
+      { wch: 5 },  // C TWG-共榮庫存
+      { wch: 5 }, // D TWOCY-交易佔存倉
+      { wch: 5 },  // E TWRT-露天倉庫
+      { wch: 5 },  // F TWSS-STEEL SHOP
+      { wch: 10 }, // G Retail Price
+      { wch: 10 }, // H Promotion Price
+    ]
+
+    // 標題列樣式
+    for (let r = range.s.r; r <= range.e.r; r += 1) {
+      const firstCell = worksheet[XLSX.utils.encode_cell({ r, c: 0 })]
+
+      if (!firstCell || normalizeText(firstCell.v) !== '品項編碼') continue
+
+      for (let c = range.s.c; c <= range.e.c; c += 1) {
+        const address = XLSX.utils.encode_cell({ r, c })
+        if (!worksheet[address]) continue
+
+        worksheet[address].s = {
+          ...(worksheet[address].s || {}),
+          fill: { fgColor: { rgb: 'E2E8F0' } },
+          font: {
+            bold: true,
+            color: { rgb: '0F172A' }
+          },
+          alignment: {
+            horizontal: 'center',
+            vertical: 'center',
+            wrapText: true
+          },
+          border: {
+            top: { style: 'thin', color: { rgb: 'CBD5E1' } },
+            bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+            left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+            right: { style: 'thin', color: { rgb: 'CBD5E1' } }
+          }
+        }
+      }
+    }
+
+    XLSX.utils.book_append_sheet(
+        workbook,
+        worksheet,
+        sheet.name.slice(0, 31)
+    )
   })
 
   if (!workbook.SheetNames.length) {
