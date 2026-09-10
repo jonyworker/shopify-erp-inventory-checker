@@ -6,6 +6,7 @@ import InventoryRutenChecker from './tools/inventory/InventoryRutenChecker.vue'
 import PriceErpChecker from './tools/price/PriceErpChecker.vue'
 import PriceShopifyChecker from './tools/price/PriceShopifyChecker.vue'
 import PriceRutenChecker from './tools/price/PriceRutenChecker.vue'
+import PromotionPriceBuilderTool from './tools/promotion/PromotionPriceBuilderTool.vue'
 import ShopifyPromotionLaunchTool from './tools/promotion/ShopifyPromotionLaunchTool.vue'
 import ShopifyPromotionEndTool from './tools/promotion/ShopifyPromotionEndTool.vue'
 import CustomsDeclarationParser from './tools/customs/CustomsDeclarationParser.vue'
@@ -49,6 +50,10 @@ const toolGroups = [
     label: 'Shopify 工具',
     description: '活動商品上架與下架管理',
     tools: [
+      {
+        label: 'Promotion 價格產生器',
+        value: 'promotionPriceBuilder'
+      },
       {
         label: 'Promotion 商品上架',
         value: 'shopifyPromotionLaunch'
@@ -104,6 +109,9 @@ const currentComponent = computed(() => {
 
     case 'priceRuten':
       return PriceRutenChecker
+
+    case 'promotionPriceBuilder':
+      return PromotionPriceBuilderTool
 
     case 'shopifyPromotionLaunch':
       return ShopifyPromotionLaunchTool

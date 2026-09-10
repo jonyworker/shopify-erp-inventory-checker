@@ -89,50 +89,88 @@ function firstNonEmpty(rows, column) {
 }
 
 export function parsePromotionRows(rawRows, sheetName) {
-    const rows = []
+  const rows = []
+  let header = []
+  let headerIndexes = null
+  let currentDiscountLabel = ''
 
-    let discountLabel = ''
-    let headerFound = false
+  const normalizeHeader = value => normalizeText(value).replace(/\s+/g, ' ')
+  const findHeaderIndex = (patterns) => header.findIndex(column =>
+    patterns.some(pattern => pattern.test(normalizeHeader(column)))
+  )
+  const findDiscountLabel = row => {
+    for (const cell of row) {
+      const text = normalizeText(cell)
+      if (/\d+(?:\.\d+)?\s*%\s*(?:OFF)?/i.test(text)) return text
+    }
+    return ''
+  }
 
-    rawRows.forEach((rawRow, index) => {
-        const row = Array.isArray(rawRow)
-            ? rawRow
-            : []
+  rawRows.forEach((rawRow, index) => {
+    const row = Array.isArray(rawRow) ? rawRow : []
+    const normalizedRow = row.map(normalizeHeader)
+    const skuHeaderIndex = normalizedRow.findIndex(value => value === '品項編碼' || /^item$/i.test(value))
 
-        const firstCell = normalizeText(row[0])
+    if (skuHeaderIndex >= 0) {
+      header = normalizedRow
 
-        if (firstCell === '品項編碼') {
-            headerFound = true
-            discountLabel = normalizeText(row[6])
+      const retailIndex = findHeaderIndex([
+        /retail price/i,
+        /零售價/,
+        /建議售價/,
+        /含稅.*價格/
+      ])
 
-            return
-        }
+      const promotionIndex = header.findIndex(column => /\d+(?:\.\d+)?\s*%\s*(?:OFF)?/i.test(column))
 
-        if (!headerFound || !firstCell) {
-            return
-        }
+      headerIndexes = {
+        sku: skuHeaderIndex,
+        name: findHeaderIndex([/^品項名稱$/, /product name/i, /item name/i]),
+        twg: findHeaderIndex([/^TWG-/i]),
+        ruten: findHeaderIndex([/^TWRT-/i, /露天/]),
+        steelShop: findHeaderIndex([/^TWSS-/i, /STEEL SHOP/i]),
+        retail: retailIndex,
+        promotion: promotionIndex
+      }
 
-        const promotionPrice = normalizePrice(row[6])
+      const headerDiscount = findDiscountLabel(row)
+      if (headerDiscount) currentDiscountLabel = headerDiscount
+      return
+    }
 
-        if (promotionPrice === null) {
-            return
-        }
+    const discountOnly = findDiscountLabel(row)
+    const nonEmptyCount = row.filter(cell => normalizeText(cell)).length
+    if (discountOnly && nonEmptyCount <= 2) {
+      currentDiscountLabel = discountOnly
+      return
+    }
 
-        rows.push({
-            sku: normalizeSku(row[0]),
-            name: normalizeText(row[1]),
-            twgStock: normalizeText(row[2]),
-            rutenStock: normalizeText(row[3]),
-            steelShopStock: normalizeText(row[4]),
-            retailPrice: normalizePrice(row[5]),
-            promotionPrice,
-            discountLabel,
-            sourceSheet: sheetName,
-            sourceRow: index + 1
-        })
+    if (!headerIndexes) return
+
+    const sku = normalizeSku(row[headerIndexes.sku])
+    if (!sku) return
+
+    const promotionPrice = headerIndexes.promotion >= 0
+      ? normalizePrice(row[headerIndexes.promotion])
+      : null
+
+    if (promotionPrice === null) return
+
+    rows.push({
+      sku,
+      name: headerIndexes.name >= 0 ? normalizeText(row[headerIndexes.name]) : '',
+      twgStock: headerIndexes.twg >= 0 ? normalizeText(row[headerIndexes.twg]) : '',
+      rutenStock: headerIndexes.ruten >= 0 ? normalizeText(row[headerIndexes.ruten]) : '',
+      steelShopStock: headerIndexes.steelShop >= 0 ? normalizeText(row[headerIndexes.steelShop]) : '',
+      retailPrice: headerIndexes.retail >= 0 ? normalizePrice(row[headerIndexes.retail]) : null,
+      promotionPrice,
+      discountLabel: currentDiscountLabel || (headerIndexes.promotion >= 0 ? header[headerIndexes.promotion] : ''),
+      sourceSheet: sheetName,
+      sourceRow: index + 1
     })
+  })
 
-    return rows
+  return rows
 }
 
 export async function parsePromotionWorkbook(file) {
