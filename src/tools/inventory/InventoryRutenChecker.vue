@@ -1,11 +1,11 @@
 <script setup>
 import { computed, ref } from 'vue'
-import FileUploadCard from '../../components/FileUploadCard.vue'
-import ColumnMapper from '../../components/ColumnMapper.vue'
-import SummaryCards from '../../components/SummaryCards.vue'
-import { useCompareResultScroll } from '../../composables/useCompareResultScroll'
-import { downloadCsv, downloadExcel, getColumns, parseDataFile } from '../../utils/fileParser'
-import { compareInventoryBySource } from '../../utils/inventory'
+import FileUploadCard from '@/components/FileUploadCard.vue'
+import ColumnMapper from '@/components/ColumnMapper.vue'
+import SummaryCards from '@/components/SummaryCards.vue'
+import { useCompareResultScroll } from '@/composables/useCompareResultScroll'
+import { downloadCsv, downloadExcel, getColumns, parseDataFile } from '@/utils/fileParser'
+import { compareInventoryBySource } from '@/utils/inventory'
 
 const rutenFileName = ref('')
 const erpFileName = ref('')

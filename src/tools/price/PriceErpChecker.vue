@@ -1,11 +1,12 @@
 <script setup>
 import { computed, ref } from 'vue'
-import FileUploadCard from '../../components/FileUploadCard.vue'
-import ColumnMapper from '../../components/ColumnMapper.vue'
-import SummaryCards from '../../components/SummaryCards.vue'
-import { useCompareResultScroll } from '../../composables/useCompareResultScroll'
-import { downloadCsv, downloadExcel, getColumns, parseDataFile } from '../../utils/fileParser'
-import { comparePrice } from '../../utils/priceCompare'
+import FileUploadCard from '@/components/FileUploadCard.vue'
+import ColumnMapper from '@/components/ColumnMapper.vue'
+import SummaryCards from '@/components/SummaryCards.vue'
+import { useCompareResultScroll } from '@/composables/useCompareResultScroll.js'
+import { downloadCsv, downloadExcel, getColumns, parseDataFile } from '@/utils/fileParser.js'
+import { comparePrice } from '@/utils/priceCompare.js'
+import { buildErpPriceUpdateRows, downloadErpPriceUpdateWorkbook } from '@/utils/erpPriceUpdateExport.js'
 
 const officialFileName = ref('')
 const erpFileName = ref('')
@@ -25,6 +26,7 @@ const statusFilter = ref('all')
 const keyword = ref('')
 const errorMessage = ref('')
 const exportType = ref('xlsx')
+const erpExportError = ref('')
 
 const {
   summarySection,
@@ -51,6 +53,18 @@ const filteredResults = computed(() => {
 
     return matchStatus && matchKeyword
   })
+})
+
+const erpUpdateRows = computed(() => buildErpPriceUpdateRows(results.value))
+
+const canExport = computed(() => {
+  if (!results.value.length) return false
+
+  if (exportType.value === 'erp-xlsx') {
+    return erpUpdateRows.value.length > 0
+  }
+
+  return filteredResults.value.length > 0
 })
 
 const summary = computed(() => {
@@ -113,6 +127,7 @@ async function handleErpFile(file) {
 
 function resetCompareResult() {
   results.value = []
+  erpExportError.value = ''
   invalidRows.value = { official: [], erp: [] }
   statusFilter.value = 'all'
   keyword.value = ''
@@ -162,6 +177,24 @@ async function handleCompare() {
 }
 
 function handleExport() {
+  if (!results.value.length) return
+
+  if (exportType.value === 'erp-xlsx') {
+    if (!erpUpdateRows.value.length) return
+
+    try {
+      erpExportError.value = ''
+      downloadErpPriceUpdateWorkbook(
+        'ERP-price-update.xlsx',
+        results.value
+      )
+    } catch (error) {
+      console.error(error)
+      erpExportError.value = error?.message || 'ERP 價格更新檔匯出失敗。'
+    }
+    return
+  }
+
   if (!filteredResults.value.length) return
 
   if (exportType.value === 'csv') {
@@ -269,19 +302,34 @@ function getStatusClass(status) {
       <select
           v-model="exportType"
           class="rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-700 outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:text-slate-300"
-          :disabled="!filteredResults.length"
+          :disabled="!results.length"
       >
-        <option value="xlsx">Excel</option>
-        <option value="csv">CSV</option>
+        <option value="xlsx">比對結果 Excel</option>
+        <option value="csv">比對結果 CSV</option>
+        <option value="erp-xlsx">ERP 價格更新檔（{{ erpUpdateRows.length }}）</option>
       </select>
 
       <button
           class="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
-          :disabled="!filteredResults.length"
+          :disabled="!canExport"
           @click="handleExport"
       >
         匯出結果
       </button>
+    </section>
+
+    <section
+        v-if="results.length"
+        class="mt-4 rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm leading-6 text-blue-800"
+    >
+      ERP 價格更新檔只會匯出「價格不一致」的品項，並依 RRP 自動計算 95、92、90、85、88、80、70、75 折價格。欄位順序與 ERP「更改品項」Excel 範本一致，可直接複製資料貼入 ERP。
+    </section>
+
+    <section
+        v-if="erpExportError"
+        class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"
+    >
+      {{ erpExportError }}
     </section>
 
     <section

@@ -1,11 +1,11 @@
 <script setup>
 import { computed, ref } from 'vue'
-import { useCompareResultScroll } from '../../composables/useCompareResultScroll'
-import FileUploadCard from '../../components/FileUploadCard.vue'
-import ColumnMapper from '../../components/ColumnMapper.vue'
-import SummaryCards from '../../components/SummaryCards.vue'
-import { downloadCsv, downloadExcel, getColumns, parseDataFile } from '../../utils/fileParser'
-import { compareInventory } from '../../utils/inventory'
+import { useCompareResultScroll } from '@/composables/useCompareResultScroll'
+import FileUploadCard from '@/components/FileUploadCard.vue'
+import ColumnMapper from '@/components/ColumnMapper.vue'
+import SummaryCards from '@/components/SummaryCards.vue'
+import { downloadCsv, downloadExcel, getColumns, parseDataFile } from '@/utils/fileParser'
+import { compareInventory } from '@/utils/inventory'
 
 const shopifyFileName = ref('')
 const erpFileName = ref('')

@@ -1,11 +1,11 @@
 <script setup>
 import { computed, ref } from 'vue'
-import FileUploadCard from '../../components/FileUploadCard.vue'
-import ColumnMapper from '../../components/ColumnMapper.vue'
-import SummaryCards from '../../components/SummaryCards.vue'
-import { useCompareResultScroll } from '../../composables/useCompareResultScroll'
-import { downloadCsv, downloadExcel, getColumns, parseDataFile } from '../../utils/fileParser'
-import { comparePriceWithRuten } from '../../utils/priceCompare'
+import FileUploadCard from '@/components/FileUploadCard.vue'
+import ColumnMapper from '@/components/ColumnMapper.vue'
+import SummaryCards from '@/components/SummaryCards.vue'
+import { useCompareResultScroll } from '@/composables/useCompareResultScroll.js'
+import { downloadCsv, downloadExcel, getColumns, parseDataFile } from '@/utils/fileParser.js'
+import { comparePriceWithRuten } from '@/utils/priceCompare.js'
 
 const officialFileName = ref('')
 const rutenFileName = ref('')
