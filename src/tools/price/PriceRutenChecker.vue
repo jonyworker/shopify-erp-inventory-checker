@@ -67,7 +67,7 @@ const summary = computed(() => {
       results.value.filter(item => item.狀態 === 'RRP 獨有').length
 
   const targetOnly =
-      results.value.filter(item => item.狀態 === 'ERP 獨有').length
+      results.value.filter(item => item.狀態 === 'Ruten 獨有').length
 
   return {
     total,
