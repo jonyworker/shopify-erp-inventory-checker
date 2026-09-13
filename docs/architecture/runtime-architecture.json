@@ -1,0 +1,197 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Internal toolbox runtime architecture",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [1340, 760]
+  },
+  "components": [
+    {
+      "id": "localFiles",
+      "type": "external",
+      "label": "Local business files",
+      "sublabel": "CSV / XLSX / XLS / PDF",
+      "pos": [20, 330],
+      "size": [180, 78]
+    },
+    {
+      "id": "activeTool",
+      "type": "frontend",
+      "label": "Active Vue tool",
+      "sublabel": "tools/ · reactive workflow state",
+      "pos": [240, 330],
+      "size": [180, 78]
+    },
+    {
+      "id": "inputAdapters",
+      "type": "backend",
+      "label": "Input adapters",
+      "sublabel": "fileParser + specialized parsers",
+      "pos": [460, 330],
+      "size": [180, 78]
+    },
+    {
+      "id": "domainLogic",
+      "type": "backend",
+      "label": "Domain processing",
+      "sublabel": "compare · build · validate",
+      "pos": [680, 330],
+      "size": [180, 78]
+    },
+    {
+      "id": "preview",
+      "type": "frontend",
+      "label": "Preview and review",
+      "sublabel": "filters · summaries · edits",
+      "pos": [900, 330],
+      "size": [180, 78]
+    },
+    {
+      "id": "downloads",
+      "type": "external",
+      "label": "Downloaded reports",
+      "sublabel": "CSV / styled Excel workbooks",
+      "pos": [1120, 330],
+      "size": [180, 78]
+    },
+    {
+      "id": "appShell",
+      "type": "frontend",
+      "label": "App.vue tool shell",
+      "sublabel": "ToolSwitcher + dynamic component",
+      "pos": [240, 100],
+      "size": [180, 78]
+    },
+    {
+      "id": "sharedUi",
+      "type": "frontend",
+      "label": "Shared UI support",
+      "sublabel": "components · composables",
+      "pos": [240, 560],
+      "size": [180, 78]
+    },
+    {
+      "id": "tabularLibraries",
+      "type": "external",
+      "label": "Tabular libraries",
+      "sublabel": "Papa Parse · xlsx-js-style",
+      "pos": [460, 560],
+      "size": [180, 78]
+    },
+    {
+      "id": "documentLibraries",
+      "type": "external",
+      "label": "Document libraries",
+      "sublabel": "PDF.js · Tesseract.js OCR",
+      "pos": [680, 560],
+      "size": [180, 78]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Browser runtime · no application server or database",
+      "wraps": [
+        "activeTool",
+        "inputAdapters",
+        "domainLogic",
+        "preview",
+        "appShell",
+        "sharedUi",
+        "tabularLibraries",
+        "documentLibraries"
+      ],
+      "pad": 26
+    }
+  ],
+  "connections": [
+    {
+      "id": "filesToTool",
+      "from": "localFiles",
+      "to": "activeTool",
+      "variant": "emphasis"
+    },
+    {
+      "id": "toolToAdapters",
+      "from": "activeTool",
+      "to": "inputAdapters",
+      "variant": "emphasis"
+    },
+    {
+      "id": "adaptersToLogic",
+      "from": "inputAdapters",
+      "to": "domainLogic",
+      "variant": "emphasis"
+    },
+    {
+      "id": "logicToPreview",
+      "from": "domainLogic",
+      "to": "preview",
+      "variant": "emphasis"
+    },
+    {
+      "id": "previewToDownloads",
+      "from": "preview",
+      "to": "downloads",
+      "variant": "emphasis"
+    },
+    {
+      "id": "shellToTool",
+      "from": "appShell",
+      "to": "activeTool",
+      "label": "selects tool",
+      "labelDy": 24,
+      "variant": "dashed"
+    },
+    {
+      "id": "uiToTool",
+      "from": "sharedUi",
+      "to": "activeTool",
+      "label": "UI support",
+      "variant": "dashed"
+    },
+    {
+      "id": "tabularToAdapters",
+      "from": "tabularLibraries",
+      "to": "inputAdapters",
+      "label": "CSV / Excel",
+      "variant": "dashed"
+    },
+    {
+      "id": "documentsToAdapters",
+      "from": "documentLibraries",
+      "to": "inputAdapters",
+      "label": "PDF / OCR",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Vue application shell",
+      "items": [
+        "App.vue registers nine active tools and mounts the selected component.",
+        "Shared upload, mapping, summary and customs preview components stay inside the browser."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Tabular business flows",
+      "items": [
+        "fileParser reads CSV and Excel; inventory.js compares ERP with Shopify or Ruten.",
+        "priceCompare.js compares RRP with ERP, Shopify or Ruten.",
+        "START builds Shopify promotion rows; END restores prices and removes selected tags."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Customs documents",
+      "items": [
+        "PDF.js extracts native text; Tesseract.js provides OCR and fallback recognition.",
+        "Declaration rows are parsed, deduplicated, validated, edited in preview and exported to Invoice Excel."
+      ]
+    }
+  ]
+}

@@ -22,3 +22,9 @@ Thumbs.db
 .env
 .env.local
 .env.production
+
+# Archify
+docs/architecture/*.visual-check*.png
+docs/architecture/*.visual-check.html
+docs/architecture/*.visual-check.json
+docs/architecture/*receipt.json

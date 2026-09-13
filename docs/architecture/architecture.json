@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Internal tools \u00b7 Vue 3 + Vite architecture",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1376,
+      740
+    ]
+  },
+  "components": [
+    {
+      "id": "local",
+      "type": "external",
+      "label": "Local file",
+      "sublabel": "CSV / XLSX / XLS / PDF",
+      "pos": [
+        32.0,
+        330
+      ],
+      "size": [
+        192,
+        84
+      ]
+    },
+    {
+      "id": "tool",
+      "type": "frontend",
+      "label": "Vue tool \u00b7 tools/",
+      "sublabel": "Inputs, mappings, reactive state",
+      "pos": [
+        256.0,
+        330
+      ],
+      "size": [
+        192,
+        84
+      ]
+    },
+    {
+      "id": "parser",
+      "type": "frontend",
+      "label": "Parser \u00b7 utils/",
+      "sublabel": "fileParser + specialized parsers",
+      "pos": [
+        480.0,
+        330
+      ],
+      "size": [
+        192,
+        84
+      ]
+    },
+    {
+      "id": "logic",
+      "type": "frontend",
+      "label": "Business logic \u00b7 utils/",
+      "sublabel": "Compare, build, validate",
+      "pos": [
+        704.0,
+        330
+      ],
+      "size": [
+        192,
+        84
+      ]
+    },
+    {
+      "id": "preview",
+      "type": "frontend",
+      "label": "Preview",
+      "sublabel": "Results, filters, edits, selection",
+      "pos": [
+        928.0,
+        330
+      ],
+      "size": [
+        192,
+        84
+      ]
+    },
+    {
+      "id": "export",
+      "type": "external",
+      "label": "Export",
+      "sublabel": "CSV / Excel downloads",
+      "pos": [
+        1152.0,
+        330
+      ],
+      "size": [
+        192,
+        84
+      ]
+    },
+    {
+      "id": "shell",
+      "type": "frontend",
+      "label": "App.vue \u00b7 tool shell",
+      "sublabel": "ToolSwitcher + dynamic component",
+      "pos": [
+        256.0,
+        80
+      ],
+      "size": [
+        192,
+        84
+      ]
+    },
+    {
+      "id": "components",
+      "type": "frontend",
+      "label": "components/",
+      "sublabel": "Upload, mapping, summary, tables",
+      "pos": [
+        256.0,
+        580
+      ],
+      "size": [
+        192,
+        84
+      ]
+    },
+    {
+      "id": "composables",
+      "type": "frontend",
+      "label": "composables/",
+      "sublabel": "useCompareResultScroll",
+      "pos": [
+        928.0,
+        580
+      ],
+      "size": [
+        192,
+        84
+      ]
+    },
+    {
+      "id": "config",
+      "type": "frontend",
+      "label": "config/",
+      "sublabel": "Shopify export status rules",
+      "pos": [
+        704.0,
+        580
+      ],
+      "size": [
+        192,
+        84
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "local-to-tool",
+      "from": "local",
+      "to": "tool",
+      "variant": "emphasis"
+    },
+    {
+      "id": "tool-to-parser",
+      "from": "tool",
+      "to": "parser",
+      "variant": "emphasis"
+    },
+    {
+      "id": "parser-to-logic",
+      "from": "parser",
+      "to": "logic",
+      "variant": "emphasis"
+    },
+    {
+      "id": "logic-to-preview",
+      "from": "logic",
+      "to": "preview",
+      "variant": "emphasis"
+    },
+    {
+      "id": "preview-to-export",
+      "from": "preview",
+      "to": "export",
+      "variant": "emphasis"
+    },
+    {
+      "id": "shell-to-tool",
+      "from": "shell",
+      "to": "tool",
+      "label": "selects",
+      "variant": "dashed",
+      "labelDy": 70
+    },
+    {
+      "id": "components-to-tool",
+      "from": "components",
+      "to": "tool",
+      "label": "shared UI",
+      "variant": "dashed"
+    },
+    {
+      "id": "composables-to-preview",
+      "from": "composables",
+      "to": "preview",
+      "label": "scrolls",
+      "variant": "dashed"
+    },
+    {
+      "id": "config-to-logic",
+      "from": "config",
+      "to": "logic",
+      "label": "price export policy",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Inventory & price comparison",
+      "items": [
+        "inventory.js: ERP vs Shopify / Ruten quantities.",
+        "priceCompare.js: RRP vs ERP / Shopify / Ruten prices."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Promotion flow",
+      "items": [
+        "Workbook + RRP \u2192 promotion price workbook.",
+        "Promotion + Shopify \u2192 launch CSV; Shopify \u2192 end CSV."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Customs parsing",
+      "items": [
+        "PDF.js text / Tesseract OCR \u2192 declaration parsing + validation.",
+        "Editable preview \u2192 declarationExport.js \u2192 Invoice Excel."
+      ]
+    }
+  ]
+}
