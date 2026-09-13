@@ -96,6 +96,59 @@ function toPriceMap(rows, options) {
   }
 }
 
+function comparePriceMaps({
+                            sourceRows,
+                            targetRows,
+                            sourceColumns,
+                            targetColumns,
+                            createSourceOnlyResult,
+                            createMatchedResult,
+                            createTargetOnlyResult
+                          }) {
+  const source = toPriceMap(sourceRows, sourceColumns)
+  const target = toPriceMap(targetRows, targetColumns)
+  const results = []
+
+  source.map.forEach((sourceItem, itemCode) => {
+    const targetItem = target.map.get(itemCode)
+
+    if (!targetItem) {
+      results.push(
+          createSourceOnlyResult(itemCode, sourceItem)
+      )
+
+      return
+    }
+
+    results.push(
+        createMatchedResult(
+            itemCode,
+            sourceItem,
+            targetItem,
+            targetItem.price - sourceItem.price
+        )
+    )
+  })
+
+  target.map.forEach((targetItem, itemCode) => {
+    if (source.map.has(itemCode)) {
+      return
+    }
+
+    results.push(
+        createTargetOnlyResult(itemCode, targetItem)
+    )
+  })
+
+  return {
+    results,
+    invalidRows: {
+      source: source.invalidRows,
+      target: target.invalidRows
+    }
+  }
+}
+
 /**
  * RRP／ERP 價格比對
  *
@@ -112,47 +165,37 @@ export function comparePrice({
                                erpPriceColumn,
                                erpNameColumn
                              }) {
-  const official = toPriceMap(officialRows, {
-    codeColumn: officialCodeColumn,
-    priceColumn: officialPriceColumn,
-    nameColumn: officialNameColumn
-  })
-
-  const erp = toPriceMap(erpRows, {
-    codeColumn: erpCodeColumn,
-    priceColumn: erpPriceColumn,
-    nameColumn: erpNameColumn
-  })
-
-  const comparedCodeSet = new Set()
-  const results = []
-
-  official.map.forEach((officialItem, itemCode) => {
-    const erpItem = erp.map.get(itemCode)
-
-    comparedCodeSet.add(itemCode)
-
-    if (!erpItem) {
-      results.push({
-        品項編碼: itemCode,
-        來源工作表: officialItem.sourceSheet,
-        品項名稱: officialItem.name,
-        價目表價格: officialItem.price,
-        ERP出庫單價: '',
-        差異: '',
-        狀態: 'RRP 獨有',
-        備註: officialItem.duplicated
-            ? '價目表品項重複，已取第一筆價格'
-            : ''
-      })
-
-      return
-    }
-
-    const diff =
-        erpItem.price - officialItem.price
-
-    results.push({
+  const comparison = comparePriceMaps({
+    sourceRows: officialRows,
+    targetRows: erpRows,
+    sourceColumns: {
+      codeColumn: officialCodeColumn,
+      priceColumn: officialPriceColumn,
+      nameColumn: officialNameColumn
+    },
+    targetColumns: {
+      codeColumn: erpCodeColumn,
+      priceColumn: erpPriceColumn,
+      nameColumn: erpNameColumn
+    },
+    createSourceOnlyResult: (itemCode, officialItem) => ({
+      品項編碼: itemCode,
+      來源工作表: officialItem.sourceSheet,
+      品項名稱: officialItem.name,
+      價目表價格: officialItem.price,
+      ERP出庫單價: '',
+      差異: '',
+      狀態: 'RRP 獨有',
+      備註: officialItem.duplicated
+          ? '價目表品項重複，已取第一筆價格'
+          : ''
+    }),
+    createMatchedResult: (
+        itemCode,
+        officialItem,
+        erpItem,
+        diff
+    ) => ({
       品項編碼: itemCode,
       來源工作表: officialItem.sourceSheet,
       品項名稱:
@@ -183,15 +226,8 @@ export function comparePrice({
       ]
           .filter(Boolean)
           .join('；')
-    })
-  })
-
-  erp.map.forEach((erpItem, itemCode) => {
-    if (comparedCodeSet.has(itemCode)) {
-      return
-    }
-
-    results.push({
+    }),
+    createTargetOnlyResult: (itemCode, erpItem) => ({
       品項編碼: itemCode,
       來源工作表: '',
       品項名稱: erpItem.name,
@@ -206,10 +242,10 @@ export function comparePrice({
   })
 
   return {
-    results,
+    results: comparison.results,
     invalidRows: {
-      official: official.invalidRows,
-      erp: erp.invalidRows
+      official: comparison.invalidRows.source,
+      erp: comparison.invalidRows.target
     }
   }
 }
@@ -239,49 +275,38 @@ export function comparePriceWithShopify({
                                           shopifyPriceColumn,
                                           shopifyNameColumn
                                         }) {
-  const official = toPriceMap(officialRows, {
-    codeColumn: officialCodeColumn,
-    priceColumn: officialPriceColumn,
-    nameColumn: officialNameColumn
-  })
-
-  const shopify = toPriceMap(shopifyRows, {
-    codeColumn: shopifyCodeColumn,
-    priceColumn: shopifyPriceColumn,
-    nameColumn: shopifyNameColumn
-  })
-
-  const comparedCodeSet = new Set()
-  const results = []
-
-  official.map.forEach((officialItem, itemCode) => {
-    const shopifyItem =
-        shopify.map.get(itemCode)
-
-    comparedCodeSet.add(itemCode)
-
-    if (!shopifyItem) {
-      results.push({
-        sku: itemCode,
-        sourceSheet: officialItem.sourceSheet,
-        rrpName: officialItem.name,
-        shopifyName: '',
-        rrpPrice: officialItem.price,
-        shopifyPrice: '',
-        diff: '',
-        status: 'RRP 獨有',
-        note: officialItem.duplicated
-            ? 'RRP 品項重複，已取第一筆價格'
-            : ''
-      })
-
-      return
-    }
-
-    const diff =
-        shopifyItem.price - officialItem.price
-
-    results.push({
+  const comparison = comparePriceMaps({
+    sourceRows: officialRows,
+    targetRows: shopifyRows,
+    sourceColumns: {
+      codeColumn: officialCodeColumn,
+      priceColumn: officialPriceColumn,
+      nameColumn: officialNameColumn
+    },
+    targetColumns: {
+      codeColumn: shopifyCodeColumn,
+      priceColumn: shopifyPriceColumn,
+      nameColumn: shopifyNameColumn
+    },
+    createSourceOnlyResult: (itemCode, officialItem) => ({
+      sku: itemCode,
+      sourceSheet: officialItem.sourceSheet,
+      rrpName: officialItem.name,
+      shopifyName: '',
+      rrpPrice: officialItem.price,
+      shopifyPrice: '',
+      diff: '',
+      status: 'RRP 獨有',
+      note: officialItem.duplicated
+          ? 'RRP 品項重複，已取第一筆價格'
+          : ''
+    }),
+    createMatchedResult: (
+        itemCode,
+        officialItem,
+        shopifyItem,
+        diff
+    ) => ({
       sku: itemCode,
       sourceSheet: officialItem.sourceSheet,
       rrpName: officialItem.name,
@@ -312,15 +337,8 @@ export function comparePriceWithShopify({
       ]
           .filter(Boolean)
           .join('；')
-    })
-  })
-
-  shopify.map.forEach((shopifyItem, itemCode) => {
-    if (comparedCodeSet.has(itemCode)) {
-      return
-    }
-
-    results.push({
+    }),
+    createTargetOnlyResult: (itemCode, shopifyItem) => ({
       sku: itemCode,
       sourceSheet: '',
       rrpName: '',
@@ -336,10 +354,10 @@ export function comparePriceWithShopify({
   })
 
   return {
-    results,
+    results: comparison.results,
     invalidRows: {
-      official: official.invalidRows,
-      shopify: shopify.invalidRows
+      official: comparison.invalidRows.source,
+      shopify: comparison.invalidRows.target
     }
   }
 }
@@ -360,49 +378,38 @@ export function comparePriceWithRuten({
                                         rutenPriceColumn,
                                         rutenNameColumn
                                       }) {
-  const official = toPriceMap(officialRows, {
-    codeColumn: officialCodeColumn,
-    priceColumn: officialPriceColumn,
-    nameColumn: officialNameColumn
-  })
-
-  const ruten = toPriceMap(rutenRows, {
-    codeColumn: rutenCodeColumn,
-    priceColumn: rutenPriceColumn,
-    nameColumn: rutenNameColumn
-  })
-
-  const comparedCodeSet = new Set()
-  const results = []
-
-  official.map.forEach((officialItem, itemCode) => {
-    const rutenItem =
-        ruten.map.get(itemCode)
-
-    comparedCodeSet.add(itemCode)
-
-    if (!rutenItem) {
-      results.push({
-        品項編碼: itemCode,
-        來源工作表: officialItem.sourceSheet,
-        RRP品項名稱: officialItem.name,
-        Ruten商品名稱: '',
-        RRP價格: officialItem.price,
-        Ruten售價: '',
-        差異: '',
-        狀態: 'RRP 獨有',
-        備註: officialItem.duplicated
-            ? 'RRP 品項重複，已取第一筆價格'
-            : ''
-      })
-
-      return
-    }
-
-    const diff =
-        rutenItem.price - officialItem.price
-
-    results.push({
+  const comparison = comparePriceMaps({
+    sourceRows: officialRows,
+    targetRows: rutenRows,
+    sourceColumns: {
+      codeColumn: officialCodeColumn,
+      priceColumn: officialPriceColumn,
+      nameColumn: officialNameColumn
+    },
+    targetColumns: {
+      codeColumn: rutenCodeColumn,
+      priceColumn: rutenPriceColumn,
+      nameColumn: rutenNameColumn
+    },
+    createSourceOnlyResult: (itemCode, officialItem) => ({
+      品項編碼: itemCode,
+      來源工作表: officialItem.sourceSheet,
+      RRP品項名稱: officialItem.name,
+      Ruten商品名稱: '',
+      RRP價格: officialItem.price,
+      Ruten售價: '',
+      差異: '',
+      狀態: 'RRP 獨有',
+      備註: officialItem.duplicated
+          ? 'RRP 品項重複，已取第一筆價格'
+          : ''
+    }),
+    createMatchedResult: (
+        itemCode,
+        officialItem,
+        rutenItem,
+        diff
+    ) => ({
       品項編碼: itemCode,
       來源工作表: officialItem.sourceSheet,
       RRP品項名稱: officialItem.name,
@@ -433,15 +440,8 @@ export function comparePriceWithRuten({
       ]
           .filter(Boolean)
           .join('；')
-    })
-  })
-
-  ruten.map.forEach((rutenItem, itemCode) => {
-    if (comparedCodeSet.has(itemCode)) {
-      return
-    }
-
-    results.push({
+    }),
+    createTargetOnlyResult: (itemCode, rutenItem) => ({
       品項編碼: itemCode,
       來源工作表: '',
       RRP品項名稱: '',
@@ -457,10 +457,10 @@ export function comparePriceWithRuten({
   })
 
   return {
-    results,
+    results: comparison.results,
     invalidRows: {
-      official: official.invalidRows,
-      ruten: ruten.invalidRows
+      official: comparison.invalidRows.source,
+      ruten: comparison.invalidRows.target
     }
   }
 }
