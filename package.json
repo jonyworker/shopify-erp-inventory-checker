@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "vitest run",
     "preview": "vite preview",
     "deploy": "npm run build && gh-pages -d dist"
   },
@@ -23,6 +24,7 @@
     "autoprefixer": "latest",
     "gh-pages": "^6.3.0",
     "postcss": "latest",
-    "tailwindcss": "^3.4.17"
+    "tailwindcss": "^3.4.17",
+    "vitest": "^4.1.11"
   }
 }
