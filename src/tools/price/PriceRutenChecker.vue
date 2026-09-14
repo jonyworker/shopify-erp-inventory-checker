@@ -6,6 +6,7 @@ import SummaryCards from '@/components/SummaryCards.vue'
 import { useCompareResultScroll } from '@/composables/useCompareResultScroll.js'
 import { downloadCsv, downloadExcel, getColumns, parseDataFile } from '@/utils/fileParser.js'
 import { comparePriceWithRuten } from '@/utils/priceCompare.js'
+import { buildRutenPriceUpdateRows, downloadRutenPriceUpdateWorkbook } from '@/utils/rutenPriceUpdateExport.js'
 
 const officialFileName = ref('')
 const rutenFileName = ref('')
@@ -25,6 +26,7 @@ const statusFilter = ref('all')
 const keyword = ref('')
 const errorMessage = ref('')
 const exportType = ref('xlsx')
+const rutenExportError = ref('')
 
 const {
   summarySection,
@@ -52,6 +54,26 @@ const filteredResults = computed(() => {
 
     return matchStatus && matchKeyword
   })
+})
+
+const rutenUpdateRows = computed(() => {
+  if (!results.value.length || !rutenRows.value.length) return []
+
+  try {
+    return buildRutenPriceUpdateRows(results.value, rutenRows.value)
+  } catch {
+    return []
+  }
+})
+
+const canExport = computed(() => {
+  if (!results.value.length) return false
+
+  if (exportType.value === 'ruten-xlsx') {
+    return rutenUpdateRows.value.length > 0
+  }
+
+  return filteredResults.value.length > 0
 })
 
 const summary = computed(() => {
@@ -102,7 +124,7 @@ async function handleRutenFile(file) {
     errorMessage.value = ''
     rutenFileName.value = file.name
     rutenRows.value = await parseDataFile(file, {
-      headerKeywords: ['賣家自用料號', '售價', '商品名稱']
+      headerKeywords: ['賣家自用料號', '售價', '修改售價', '商品名稱']
     })
     rutenColumns.value = getColumns(rutenRows.value)
     autoPickColumns('ruten')
@@ -114,6 +136,7 @@ async function handleRutenFile(file) {
 
 function resetCompareResult() {
   results.value = []
+  rutenExportError.value = ''
   invalidRows.value = { official: [], ruten: [] }
   statusFilter.value = 'all'
   keyword.value = ''
@@ -163,6 +186,25 @@ async function handleCompare() {
 }
 
 function handleExport() {
+  if (!results.value.length) return
+
+  if (exportType.value === 'ruten-xlsx') {
+    if (!rutenUpdateRows.value.length) return
+
+    try {
+      rutenExportError.value = ''
+      downloadRutenPriceUpdateWorkbook(
+        'Ruten-price-update.xlsx',
+        results.value,
+        rutenRows.value
+      )
+    } catch (error) {
+      console.error(error)
+      rutenExportError.value = error?.message || 'Ruten 價格更新檔匯出失敗。'
+    }
+    return
+  }
+
   if (!filteredResults.value.length) return
 
   if (exportType.value === 'csv') {
@@ -269,19 +311,35 @@ function getStatusClass(status) {
 
       <select
           v-model="exportType"
-          class="rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-700 outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
+          class="rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-700 outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:text-slate-300"
+          :disabled="!results.length"
       >
-        <option value="xlsx">匯出 XLSX</option>
-        <option value="csv">匯出 CSV</option>
+        <option value="xlsx">比對結果 Excel</option>
+        <option value="csv">比對結果 CSV</option>
+        <option value="ruten-xlsx">Ruten價格更新檔({{ rutenUpdateRows.length }})</option>
       </select>
 
       <button
           class="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
-          :disabled="!filteredResults.length"
+          :disabled="!canExport"
           @click="handleExport"
       >
         匯出結果
       </button>
+    </section>
+
+    <section
+        v-if="results.length"
+        class="mt-4 rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm leading-6 text-blue-800"
+    >
+      Ruten 價格更新檔只會匯出「價格不一致」的品項，保留露天原始欄位與目前售價，並將 RRP Retail Price 寫入「修改售價」。價格相同的品項不會輸出，避免露天拒絕匯入。
+    </section>
+
+    <section
+        v-if="rutenExportError"
+        class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"
+    >
+      {{ rutenExportError }}
     </section>
 
     <section
@@ -295,8 +353,8 @@ function getStatusClass(status) {
           total: '比對品項總數',
           matched: '一致',
           different: '價格不一致',
-          sourceOnly: 'ERP 獨有',
-          targetOnly: 'Shopify 獨有'
+          sourceOnly: 'RRP 獨有',
+          targetOnly: 'Ruten 獨有'
         }"
       />
 
