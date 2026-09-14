@@ -294,7 +294,7 @@ function getStatusClass(status) {
           :labels="{
           total: '比對品項總數',
           matched: '一致',
-          different: '數量不一致',
+          different: '價格不一致',
           sourceOnly: 'ERP 獨有',
           targetOnly: 'Shopify 獨有'
         }"
