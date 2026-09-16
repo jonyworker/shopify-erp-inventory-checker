@@ -9,8 +9,7 @@ import {
 
 import {
   getPermits,
-  createPermit,
-  createPermitItems
+  createPermitWithItems
 } from '@/utils/permits/permitRepository'
 
 import { currentUser } from '@/stores/authState'
@@ -164,47 +163,20 @@ async function handleSaveToDatabase() {
   try {
     isSaving.value = true
 
-    /*
-     * Step 1
-     * 先建立公文主檔。
-     */
-    const createdPermit = await createPermit(
+    const result = await createPermitWithItems(
         permitData.value
     )
 
-    /*
-     * Step 2
-     * 使用剛建立的 permit id
-     * 建立底下所有商品明細。
-     */
-    const createdItems = await createPermitItems(
-        createdPermit.id,
-        permitData.value.items
-    )
-
     saveSuccess.value =
-        `寫入成功：公文 1 筆，商品明細 ${createdItems.length} 筆`
+        `寫入成功：公文 1 筆，商品明細 ${result.itemCount} 筆`
 
     console.log(
-        'createdPermit',
-        createdPermit
-    )
-
-    console.log(
-        'createdItems',
-        createdItems
+        'createPermitWithItems result',
+        result
     )
   } catch (error) {
     console.error(error)
 
-    /*
-     * PostgreSQL unique violation
-     *
-     * application_no
-     * certificate_no
-     *
-     * 任一重複時，都會進到這裡。
-     */
     if (error.code === '23505') {
       saveError.value =
           '寫入失敗：申辦案號或簽審核准文號已存在，請確認是否重複匯入'

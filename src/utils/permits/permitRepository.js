@@ -64,3 +64,24 @@ export async function createPermitItems(
 
     return data
 }
+
+export async function createPermitWithItems(permitData) {
+    const { data, error } = await supabase.rpc(
+        'create_permit_with_items',
+        {
+            p_application_no: permitData.applicationNo,
+            p_certificate_no: permitData.certificateNo,
+            p_issue_date: permitData.issueDate,
+            p_expiration_date: permitData.expirationDate,
+            p_goods_type: permitData.goodsType,
+            p_applicant: permitData.applicant,
+            p_items: permitData.items
+        }
+    )
+
+    if (error) {
+        throw error
+    }
+
+    return data
+}
