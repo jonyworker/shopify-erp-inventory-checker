@@ -216,3 +216,82 @@ export async function searchPermitRecords(keyword) {
         mergedMap.values()
     )
 }
+
+export async function getExpiringPermits(days = 45) {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const endDate = new Date(today)
+    endDate.setDate(
+        endDate.getDate() + days
+    )
+
+    const formatDate = (date) =>
+        date.toISOString().slice(0, 10)
+
+    const { data, error } = await supabase
+        .from('permits')
+        .select(`
+      id,
+      application_no,
+      certificate_no,
+      issue_date,
+      expiration_date,
+      goods_type,
+      applicant,
+      created_at
+    `)
+        .gte(
+            'expiration_date',
+            formatDate(today)
+        )
+        .lte(
+            'expiration_date',
+            formatDate(endDate)
+        )
+        .order(
+            'expiration_date',
+            { ascending: true }
+        )
+
+    if (error) {
+        throw error
+    }
+
+    return data ?? []
+}
+
+export async function getAllPermitRecords() {
+    const { data, error } = await supabase
+        .from('permit_items')
+        .select(`
+      id,
+      item_no,
+      ccc_code,
+      country,
+      brand,
+      goods_name,
+      model,
+      review_result,
+      created_at,
+      permits (
+        id,
+        application_no,
+        certificate_no,
+        issue_date,
+        expiration_date,
+        goods_type,
+        applicant
+      )
+    `)
+        .order(
+            'created_at',
+            { ascending: false }
+        )
+
+    if (error) {
+        throw error
+    }
+
+    return data ?? []
+}

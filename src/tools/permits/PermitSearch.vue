@@ -1,49 +1,24 @@
 <script setup>
-import { ref } from 'vue'
+import {
+  ref,
+  computed,
+  onMounted
+} from 'vue'
 
 import {
-  searchPermitRecords
+  getAllPermitRecords
 } from '@/utils/permits/permitRepository'
 
 const keyword = ref('')
 const isSearching = ref(false)
 const searchError = ref('')
 const results = ref([])
-const hasSearched = ref(false)
-
-async function handleSearch() {
-  searchError.value = ''
-  results.value = []
-
-  const normalizedKeyword = keyword.value.trim()
-
-  if (!normalizedKeyword) {
-    searchError.value = '請輸入型號'
-    return
-  }
-
-  try {
-    isSearching.value = true
-    hasSearched.value = true
-
-    results.value = await searchPermitRecords(
-        normalizedKeyword
-    )
-  } catch (error) {
-    console.error(error)
-
-    searchError.value =
-        `查詢失敗：${error.message}`
-  } finally {
-    isSearching.value = false
-  }
-}
+const selectedStatus = ref('all')
 
 function handleClear() {
   keyword.value = ''
-  results.value = []
+  selectedStatus.value = 'all'
   searchError.value = ''
-  hasSearched.value = false
 }
 
 function getPermitStatus(expirationDate) {
@@ -99,54 +74,143 @@ function getPermitStatus(expirationDate) {
     daysText: `剩 ${diffDays} 天`
   }
 }
+
+const filteredResults = computed(() => {
+  const keywords = keyword.value
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean)
+
+  return results.value.filter((item) => {
+    const status = getPermitStatus(
+        item.permits?.expiration_date
+    )
+
+    const matchesStatus =
+        selectedStatus.value === 'all' ||
+        status.type === selectedStatus.value
+
+    if (!matchesStatus) {
+      return false
+    }
+
+    if (keywords.length === 0) {
+      return true
+    }
+
+    const searchableFields = [
+      item.permits?.applicant,
+      item.permits?.application_no,
+      item.permits?.certificate_no,
+      item.item_no,
+      item.ccc_code,
+      item.brand,
+      item.goods_name,
+      item.country,
+      item.model,
+      item.review_result,
+      item.permits?.issue_date,
+      item.permits?.expiration_date
+    ].map((value) =>
+        String(value ?? '').toLowerCase()
+    )
+
+    return keywords.every((keyword) =>
+        searchableFields.some((field) =>
+            field.includes(keyword)
+        )
+    )
+  })
+})
+
+async function loadAllPermitRecords() {
+  searchError.value = ''
+
+  try {
+    isSearching.value = true
+
+    results.value =
+        await getAllPermitRecords()
+  } catch (error) {
+    console.error(error)
+
+    searchError.value =
+        `讀取簽審資料失敗：${error.message}`
+  } finally {
+    isSearching.value = false
+  }
+}
+
+onMounted(() => {
+  loadAllPermitRecords()
+})
 </script>
 
 <template>
   <section
       class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
   >
-    <div>
-      <h2 class="text-xl font-bold text-slate-950">
-        簽審資料查詢
-      </h2>
+    <!-- 標題 / 查詢 -->
+    <div
+        class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"
+    >
+      <div>
+        <h2 class="text-xl font-bold text-slate-950">
+          簽審資料查詢
+        </h2>
 
-      <p class="mt-2 text-sm text-slate-500">
-        可輸入型號、廠牌、貨品名稱、C.C.C. Code、申辦案號或簽審核准文號查詢。
-      </p>
+        <p class="mt-2 text-sm text-slate-500">
+          目前顯示
+          <span class="font-semibold text-slate-900">
+            {{ filteredResults.length }}
+          </span>
+          筆資料
+        </p>
+      </div>
+
+      <div
+          class="flex w-full flex-col gap-3 lg:w-auto lg:flex-row"
+      >
+        <input
+            v-model="keyword"
+            type="text"
+            placeholder="搜尋資料，可輸入多個關鍵字並以空格分隔"
+            class="min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 lg:w-[420px]"
+        >
+
+        <select
+            v-model="selectedStatus"
+            class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+        >
+          <option value="all">
+            全部狀態
+          </option>
+
+          <option value="valid">
+            有效
+          </option>
+
+          <option value="expiring">
+            即將到期
+          </option>
+
+          <option value="expired">
+            已過期
+          </option>
+        </select>
+
+        <button
+            type="button"
+            class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            @click="handleClear"
+        >
+          清除
+        </button>
+      </div>
     </div>
 
-    <div class="mt-6 flex flex-col gap-3 sm:flex-row">
-      <input
-          v-model="keyword"
-          type="text"
-          placeholder="例如：ME115490307、PTS、113090903217"
-          class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-          @keyup.enter="handleSearch"
-      >
-
-      <button
-          type="button"
-          :disabled="isSearching"
-          class="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-          @click="handleSearch"
-      >
-        {{
-          isSearching
-              ? '查詢中...'
-              : '查詢'
-        }}
-      </button>
-
-      <button
-          v-if="keyword || results.length"
-          type="button"
-          class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-          @click="handleClear"
-      >
-        清除
-      </button>
-    </div>
-
+    <!-- 錯誤 -->
     <div
         v-if="searchError"
         class="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700"
@@ -154,54 +218,42 @@ function getPermitStatus(expirationDate) {
       {{ searchError }}
     </div>
 
+    <!-- Loading -->
     <div
-        v-if="
-          hasSearched &&
-          !isSearching &&
-          !searchError &&
-          results.length === 0
-        "
-        class="mt-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600"
+        v-if="isSearching"
+        class="mt-8 rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500"
     >
-      查無符合資料。
+      資料讀取中...
     </div>
 
+    <!-- 無資料 -->
     <div
-        v-if="results.length"
+        v-else-if="
+        !searchError &&
+        filteredResults.length === 0
+      "
+        class="mt-8 rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600"
+    >
+      查無符合目前條件的資料。
+    </div>
+
+    <!-- Table -->
+    <div
+        v-else-if="filteredResults.length"
         class="mt-8"
     >
-      <div class="mb-4 flex items-end justify-between">
-        <div>
-          <p class="text-sm font-medium text-slate-500">
-            查詢結果
-          </p>
-
-          <h3 class="mt-1 text-lg font-bold text-slate-950">
-            共 {{ results.length }} 筆
-          </h3>
-        </div>
-      </div>
-
       <div
           class="overflow-x-auto rounded-xl border border-slate-200"
       >
         <table
-            class="w-full min-w-[1400px] border-collapse text-left text-sm"
+            class="w-full min-w-[2100px] border-collapse text-left text-sm"
         >
           <thead
               class="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500"
           >
           <tr>
             <th class="px-4 py-3">
-              型號
-            </th>
-
-            <th class="px-4 py-3">
-              貨品名稱
-            </th>
-
-            <th class="px-4 py-3">
-              廠牌
+              進口人
             </th>
 
             <th class="px-4 py-3">
@@ -210,6 +262,34 @@ function getPermitStatus(expirationDate) {
 
             <th class="px-4 py-3">
               簽審核准文號
+            </th>
+
+            <th class="px-4 py-3">
+              證書項次
+            </th>
+
+            <th class="px-4 py-3">
+              C.C.C. Code
+            </th>
+
+            <th class="px-4 py-3">
+              廠牌
+            </th>
+
+            <th class="px-4 py-3">
+              公文貨品名稱
+            </th>
+
+            <th class="px-4 py-3">
+              生產國別
+            </th>
+
+            <th class="px-4 py-3">
+              型號
+            </th>
+
+            <th class="px-4 py-3">
+              審核結果
             </th>
 
             <th class="px-4 py-3">
@@ -223,10 +303,6 @@ function getPermitStatus(expirationDate) {
             <th class="px-4 py-3">
               狀態
             </th>
-
-            <th class="px-4 py-3">
-              審核結果
-            </th>
           </tr>
           </thead>
 
@@ -234,91 +310,145 @@ function getPermitStatus(expirationDate) {
               class="divide-y divide-slate-200 bg-white"
           >
           <tr
-              v-for="item in results"
+              v-for="item in filteredResults"
               :key="item.id"
               class="align-top hover:bg-slate-50"
           >
-            <td
-                class="whitespace-nowrap px-4 py-3 font-medium text-slate-950"
-            >
-              {{ item.model }}
-            </td>
-
-            <td
-                class="min-w-[320px] px-4 py-3 text-slate-700"
-            >
-              {{ item.goods_name }}
-            </td>
-
+            <!-- 進口人 -->
             <td
                 class="whitespace-nowrap px-4 py-3 text-slate-700"
             >
-              {{ item.brand }}
+              {{ item.permits?.applicant }}
             </td>
 
+            <!-- 申辦案號 -->
             <td
                 class="whitespace-nowrap px-4 py-3 text-slate-700"
             >
               {{ item.permits?.application_no }}
             </td>
 
+            <!-- 簽審核准文號 -->
             <td
                 class="whitespace-nowrap px-4 py-3 font-medium text-slate-900"
             >
               {{ item.permits?.certificate_no }}
             </td>
 
+            <!-- 證書項次 -->
+            <td
+                class="whitespace-nowrap px-4 py-3 text-slate-700"
+            >
+              {{ item.item_no }}
+            </td>
+
+            <!-- C.C.C. Code -->
+            <td
+                class="whitespace-nowrap px-4 py-3 font-mono text-slate-700"
+            >
+              {{ item.ccc_code }}
+            </td>
+
+            <!-- 廠牌 -->
+            <td
+                class="whitespace-nowrap px-4 py-3 text-slate-700"
+            >
+              {{ item.brand }}
+            </td>
+
+            <!-- 公文貨品名稱 -->
+            <td
+                class="min-w-[360px] px-4 py-3 text-slate-700"
+            >
+              {{ item.goods_name }}
+            </td>
+
+            <!-- 生產國別 -->
+            <td
+                class="whitespace-nowrap px-4 py-3 text-slate-700"
+            >
+              {{ item.country }}
+            </td>
+
+            <!-- 型號 -->
+            <td
+                class="whitespace-nowrap px-4 py-3 font-medium text-slate-950"
+            >
+              {{ item.model }}
+            </td>
+
+            <!-- 審核結果 -->
+            <td
+                class="whitespace-nowrap px-4 py-3 text-slate-700"
+            >
+              {{ item.review_result }}
+            </td>
+
+            <!-- 核准日期 -->
             <td
                 class="whitespace-nowrap px-4 py-3 text-slate-700"
             >
               {{ item.permits?.issue_date }}
             </td>
 
+            <!-- 有效日期 -->
             <td
                 class="whitespace-nowrap px-4 py-3 text-slate-700"
             >
               {{ item.permits?.expiration_date }}
             </td>
 
-            <td class="whitespace-nowrap px-4 py-3">
-              <div class="flex flex-col items-start gap-1">
-    <span
-        :class="{
-        'bg-emerald-50 text-emerald-700':
-          getPermitStatus(item.permits?.expiration_date).type === 'valid',
-
-        'bg-amber-50 text-amber-700':
-          getPermitStatus(item.permits?.expiration_date).type === 'expiring',
-
-        'bg-red-50 text-red-700':
-          getPermitStatus(item.permits?.expiration_date).type === 'expired',
-
-        'bg-slate-100 text-slate-600':
-          getPermitStatus(item.permits?.expiration_date).type === 'unknown'
-      }"
-        class="inline-flex rounded-full px-2.5 py-1 text-xs font-medium"
-    >
-      {{
-        getPermitStatus(
-            item.permits?.expiration_date
-        ).label
-      }}
-    </span>
-
-                <span class="text-xs text-slate-500">
-      {{
-                    getPermitStatus(
-                        item.permits?.expiration_date
-                    ).daysText
-                  }}
-    </span>
-              </div>
-            </td>
-
+            <!-- 狀態 -->
             <td
-                class="whitespace-nowrap px-4 py-3 text-slate-700"
+                class="whitespace-nowrap px-4 py-3"
             >
-              {{ item.review_result }}
+        <span
+            v-if="
+            getPermitStatus(
+              item.permits?.expiration_date
+            ).type === 'valid'
+          "
+            class="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"
+        >
+          有效
+        </span>
+
+              <span
+                  v-else-if="
+            getPermitStatus(
+              item.permits?.expiration_date
+            ).type === 'expiring'
+          "
+                  class="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700"
+              >
+          即將到期（{{
+                  getPermitStatus(
+                      item.permits?.expiration_date
+                  ).daysText
+                }}）
+        </span>
+
+              <span
+                  v-else-if="
+            getPermitStatus(
+              item.permits?.expiration_date
+            ).type === 'expired'
+          "
+                  class="inline-flex rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700"
+              >
+          已過期（{{
+                  getPermitStatus(
+                      item.permits?.expiration_date
+                  ).daysText
+                }}）
+        </span>
+
+              <span
+                  v-else
+                  class="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"
+              >
+          未知
+        </span>
             </td>
           </tr>
           </tbody>
