@@ -1,5 +1,6 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
+import { initializeAuth } from '@/stores/authState'
 import ToolSwitcher from './components/ToolSwitcher.vue'
 import InventoryShopifyChecker from './tools/inventory/InventoryShopifyChecker.vue'
 import InventoryRutenChecker from './tools/inventory/InventoryRutenChecker.vue'
@@ -11,6 +12,8 @@ import ShopifyPromotionLaunchTool from './tools/promotion/ShopifyPromotionLaunch
 import ShopifyPromotionEndTool from './tools/promotion/ShopifyPromotionEndTool.vue'
 import CustomsDeclarationParser from './tools/customs/CustomsDeclarationParser.vue'
 import PermitPdfParser from './tools/permits/PermitPdfParser.vue'
+import LoginPanel from './components/auth/LoginPanel.vue'
+
 
 const currentTool = ref('inventoryShopify')
 
@@ -140,6 +143,10 @@ const currentComponent = computed(() => {
       return InventoryShopifyChecker
   }
 })
+
+onMounted(() => {
+  initializeAuth()
+})
 </script>
 
 <template>
@@ -166,6 +173,7 @@ const currentComponent = computed(() => {
         />
       </section>
 
+      <LoginPanel class="mb-6" />
       <component :is="currentComponent" />
     </div>
   </main>

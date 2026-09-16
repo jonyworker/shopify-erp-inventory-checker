@@ -1,16 +1,30 @@
 <script setup>
 import { ref } from 'vue'
+
 import {
   extractPdfText,
   parsePermitDocument,
   validatePermitData
 } from '@/utils/permits/permitPdfParser'
 
+import {
+  getPermits,
+  createPermit,
+  createPermitItems
+} from '@/utils/permits/permitRepository'
+
+import { currentUser } from '@/stores/authState'
+
 const applicationNo = ref('')
 const selectedFile = ref(null)
+
 const isParsing = ref(false)
+const isSaving = ref(false)
 
 const parseError = ref('')
+const saveError = ref('')
+const saveSuccess = ref('')
+
 const parsedPdf = ref(null)
 const permitData = ref(null)
 const validationResult = ref(null)
@@ -19,18 +33,25 @@ function resetParsedResult() {
   parsedPdf.value = null
   permitData.value = null
   validationResult.value = null
+
   parseError.value = ''
+  saveError.value = ''
+  saveSuccess.value = ''
 }
 
 function handleFileChange(event) {
   const file = event.target.files?.[0]
 
   selectedFile.value = file ?? null
+
   resetParsedResult()
 }
 
 async function handleParse() {
   parseError.value = ''
+  saveError.value = ''
+  saveSuccess.value = ''
+
   parsedPdf.value = null
   permitData.value = null
   validationResult.value = null
@@ -60,7 +81,9 @@ async function handleParse() {
   try {
     isParsing.value = true
 
-    parsedPdf.value = await extractPdfText(selectedFile.value)
+    parsedPdf.value = await extractPdfText(
+        selectedFile.value
+    )
 
     permitData.value = parsePermitDocument(
         parsedPdf.value.fullText,
@@ -71,32 +94,136 @@ async function handleParse() {
         permitData.value
     )
 
-    console.log('permitData', permitData.value)
-    console.log('validationResult', validationResult.value)
+    console.log(
+        'permitData',
+        permitData.value
+    )
+
+    console.log(
+        'validationResult',
+        validationResult.value
+    )
   } catch (error) {
     console.error(error)
-    parseError.value = 'PDF 解析失敗，請確認檔案是否正常'
+
+    parseError.value =
+        'PDF 解析失敗，請確認檔案是否正常'
   } finally {
     isParsing.value = false
+  }
+}
+
+async function handleTestSupabase() {
+  try {
+    const data = await getPermits()
+
+    alert(
+        `Supabase 連線成功，共讀到 ${data.length} 筆 permits`
+    )
+  } catch (error) {
+    console.error(error)
+
+    alert(
+        `Supabase 讀取失敗：${error.message}`
+    )
   }
 }
 
 function handleReset() {
   applicationNo.value = ''
   selectedFile.value = null
+
   resetParsedResult()
 }
 
-function handleSaveToDatabase() {
-  console.warn(
-      '準備寫入資料庫：',
-      JSON.parse(JSON.stringify(permitData.value))
-  )
+async function handleSaveToDatabase() {
+  saveError.value = ''
+  saveSuccess.value = ''
+
+  if (!currentUser.value) {
+    saveError.value =
+        '請先登入後再寫入資料庫'
+
+    return
+  }
+
+  if (!permitData.value) {
+    saveError.value =
+        '目前沒有可寫入的公文資料'
+
+    return
+  }
+
+  if (!validationResult.value?.isValid) {
+    saveError.value =
+        '資料驗證尚未通過，請先確認解析結果'
+
+    return
+  }
+
+  try {
+    isSaving.value = true
+
+    /*
+     * Step 1
+     * 先建立公文主檔。
+     */
+    const createdPermit = await createPermit(
+        permitData.value
+    )
+
+    /*
+     * Step 2
+     * 使用剛建立的 permit id
+     * 建立底下所有商品明細。
+     */
+    const createdItems = await createPermitItems(
+        createdPermit.id,
+        permitData.value.items
+    )
+
+    saveSuccess.value =
+        `寫入成功：公文 1 筆，商品明細 ${createdItems.length} 筆`
+
+    console.log(
+        'createdPermit',
+        createdPermit
+    )
+
+    console.log(
+        'createdItems',
+        createdItems
+    )
+  } catch (error) {
+    console.error(error)
+
+    /*
+     * PostgreSQL unique violation
+     *
+     * application_no
+     * certificate_no
+     *
+     * 任一重複時，都會進到這裡。
+     */
+    if (error.code === '23505') {
+      saveError.value =
+          '寫入失敗：申辦案號或簽審核准文號已存在，請確認是否重複匯入'
+
+      return
+    }
+
+    saveError.value =
+        `寫入資料庫失敗：${error.message}`
+  } finally {
+    isSaving.value = false
+  }
 }
 </script>
 
 <template>
-  <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+  <section
+      class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+  >
     <div>
       <h2 class="text-xl font-bold text-slate-950">
         槍砲彈藥簽審公文管理
@@ -107,11 +234,16 @@ function handleSaveToDatabase() {
       </p>
     </div>
 
+    <!-- 輸入區 -->
     <div class="mt-6 space-y-5">
       <div>
-        <label class="mb-2 block text-sm font-medium text-slate-700">
+        <label
+            class="mb-2 block text-sm font-medium text-slate-700"
+        >
           申辦案號
-          <span class="text-red-500">*</span>
+          <span class="text-red-500">
+            *
+          </span>
         </label>
 
         <input
@@ -124,9 +256,13 @@ function handleSaveToDatabase() {
       </div>
 
       <div>
-        <label class="mb-2 block text-sm font-medium text-slate-700">
+        <label
+            class="mb-2 block text-sm font-medium text-slate-700"
+        >
           警政署簽審 PDF
-          <span class="text-red-500">*</span>
+          <span class="text-red-500">
+            *
+          </span>
         </label>
 
         <input
@@ -142,6 +278,7 @@ function handleSaveToDatabase() {
           class="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600"
       >
         已選擇：
+
         <span class="font-medium text-slate-900">
           {{ selectedFile.name }}
         </span>
@@ -161,7 +298,20 @@ function handleSaveToDatabase() {
             class="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             @click="handleParse"
         >
-          {{ isParsing ? '解析中...' : '解析 PDF' }}
+          {{
+            isParsing
+                ? '解析中...'
+                : '解析 PDF'
+          }}
+        </button>
+
+        <!-- 開發階段暫時保留 -->
+        <button
+            type="button"
+            class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            @click="handleTestSupabase"
+        >
+          測試 Supabase 連線
         </button>
 
         <button
@@ -175,6 +325,7 @@ function handleSaveToDatabase() {
       </div>
     </div>
 
+    <!-- 驗證結果 -->
     <div
         v-if="validationResult"
         class="mt-6"
@@ -205,11 +356,14 @@ function handleSaveToDatabase() {
       </div>
     </div>
 
+    <!-- 公文預覽 -->
     <div
         v-if="permitData"
         class="mt-8 border-t border-slate-200 pt-8"
     >
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div
+          class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
+      >
         <div>
           <p class="text-sm font-medium text-slate-500">
             解析結果
@@ -222,77 +376,121 @@ function handleSaveToDatabase() {
 
         <div class="text-sm text-slate-500">
           共
+
           <span class="font-semibold text-slate-900">
             {{ permitData.summary.itemCount }}
           </span>
+
           筆商品
         </div>
       </div>
 
-      <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
+      <!-- 公文資料 -->
+      <div
+          class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+      >
+        <div
+            class="rounded-xl border border-slate-200 bg-slate-50 p-4"
+        >
+          <p
+              class="text-xs font-medium uppercase tracking-wide text-slate-500"
+          >
             申辦案號
           </p>
 
-          <p class="mt-2 break-all font-semibold text-slate-950">
+          <p
+              class="mt-2 break-all font-semibold text-slate-950"
+          >
             {{ permitData.applicationNo }}
           </p>
         </div>
 
-        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
+        <div
+            class="rounded-xl border border-slate-200 bg-slate-50 p-4"
+        >
+          <p
+              class="text-xs font-medium uppercase tracking-wide text-slate-500"
+          >
             簽審核准文號
           </p>
 
-          <p class="mt-2 break-all font-semibold text-slate-950">
+          <p
+              class="mt-2 break-all font-semibold text-slate-950"
+          >
             {{ permitData.certificateNo }}
           </p>
         </div>
 
-        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
+        <div
+            class="rounded-xl border border-slate-200 bg-slate-50 p-4"
+        >
+          <p
+              class="text-xs font-medium uppercase tracking-wide text-slate-500"
+          >
             貨品類別
           </p>
 
-          <p class="mt-2 font-semibold text-slate-950">
+          <p
+              class="mt-2 font-semibold text-slate-950"
+          >
             {{ permitData.goodsType }}
           </p>
         </div>
 
-        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
+        <div
+            class="rounded-xl border border-slate-200 bg-slate-50 p-4"
+        >
+          <p
+              class="text-xs font-medium uppercase tracking-wide text-slate-500"
+          >
             核准日期
           </p>
 
-          <p class="mt-2 font-semibold text-slate-950">
+          <p
+              class="mt-2 font-semibold text-slate-950"
+          >
             {{ permitData.issueDate }}
           </p>
         </div>
 
-        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
+        <div
+            class="rounded-xl border border-slate-200 bg-slate-50 p-4"
+        >
+          <p
+              class="text-xs font-medium uppercase tracking-wide text-slate-500"
+          >
             有效日期
           </p>
 
-          <p class="mt-2 font-semibold text-slate-950">
+          <p
+              class="mt-2 font-semibold text-slate-950"
+          >
             {{ permitData.expirationDate }}
           </p>
         </div>
 
-        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
+        <div
+            class="rounded-xl border border-slate-200 bg-slate-50 p-4"
+        >
+          <p
+              class="text-xs font-medium uppercase tracking-wide text-slate-500"
+          >
             申請人
           </p>
 
-          <p class="mt-2 font-semibold text-slate-950">
+          <p
+              class="mt-2 font-semibold text-slate-950"
+          >
             {{ permitData.applicant }}
           </p>
         </div>
       </div>
 
+      <!-- 商品明細 -->
       <div class="mt-8">
-        <div class="mb-3 flex items-center justify-between">
+        <div
+            class="mb-3 flex items-center justify-between"
+        >
           <h4 class="font-semibold text-slate-950">
             商品明細
           </h4>
@@ -302,9 +500,15 @@ function handleSaveToDatabase() {
           </span>
         </div>
 
-        <div class="overflow-x-auto rounded-xl border border-slate-200">
-          <table class="min-w-[1200px] w-full border-collapse text-left text-sm">
-            <thead class="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <div
+            class="overflow-x-auto rounded-xl border border-slate-200"
+        >
+          <table
+              class="w-full min-w-[1200px] border-collapse text-left text-sm"
+          >
+            <thead
+                class="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500"
+            >
             <tr>
               <th class="px-4 py-3">
                 Item
@@ -336,37 +540,53 @@ function handleSaveToDatabase() {
             </tr>
             </thead>
 
-            <tbody class="divide-y divide-slate-200 bg-white">
+            <tbody
+                class="divide-y divide-slate-200 bg-white"
+            >
             <tr
                 v-for="item in permitData.items"
                 :key="`${item.itemNo}-${item.model}`"
                 class="align-top hover:bg-slate-50"
             >
-              <td class="whitespace-nowrap px-4 py-3 font-medium text-slate-900">
+              <td
+                  class="whitespace-nowrap px-4 py-3 font-medium text-slate-900"
+              >
                 {{ item.itemNo }}
               </td>
 
-              <td class="whitespace-nowrap px-4 py-3 font-mono text-slate-700">
+              <td
+                  class="whitespace-nowrap px-4 py-3 font-mono text-slate-700"
+              >
                 {{ item.cccCode }}
               </td>
 
-              <td class="whitespace-nowrap px-4 py-3 text-slate-700">
+              <td
+                  class="whitespace-nowrap px-4 py-3 text-slate-700"
+              >
                 {{ item.country }}
               </td>
 
-              <td class="whitespace-nowrap px-4 py-3 text-slate-700">
+              <td
+                  class="whitespace-nowrap px-4 py-3 text-slate-700"
+              >
                 {{ item.brand }}
               </td>
 
-              <td class="min-w-[320px] px-4 py-3 text-slate-700">
+              <td
+                  class="min-w-[320px] px-4 py-3 text-slate-700"
+              >
                 {{ item.goodsName }}
               </td>
 
-              <td class="whitespace-nowrap px-4 py-3 font-medium text-slate-900">
+              <td
+                  class="whitespace-nowrap px-4 py-3 font-medium text-slate-900"
+              >
                 {{ item.model }}
               </td>
 
-              <td class="whitespace-nowrap px-4 py-3 text-slate-700">
+              <td
+                  class="whitespace-nowrap px-4 py-3 text-slate-700"
+              >
                 {{ item.reviewResult }}
               </td>
             </tr>
@@ -375,10 +595,37 @@ function handleSaveToDatabase() {
         </div>
       </div>
 
-      <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+      <!-- 未登入提示 -->
+      <p
+          v-if="!currentUser"
+          class="mt-6 text-sm text-amber-700"
+      >
+        PDF 可先解析與預覽，但寫入公文資料庫前需先登入。
+      </p>
+
+      <!-- 資料庫寫入結果 -->
+      <div
+          v-if="saveSuccess"
+          class="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+      >
+        {{ saveSuccess }}
+      </div>
+
+      <div
+          v-if="saveError"
+          class="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+      >
+        {{ saveError }}
+      </div>
+
+      <!-- 操作按鈕 -->
+      <div
+          class="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end"
+      >
         <button
             type="button"
-            class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            :disabled="isSaving"
+            class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             @click="handleReset"
         >
           重新選擇
@@ -386,26 +633,43 @@ function handleSaveToDatabase() {
 
         <button
             type="button"
-            :disabled="!validationResult?.isValid"
+            :disabled="
+            !validationResult?.isValid ||
+            !currentUser ||
+            isSaving
+          "
             class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
             @click="handleSaveToDatabase"
         >
-          確認寫入資料庫
+          {{
+            !currentUser
+                ? '請先登入後寫入資料庫'
+                : isSaving
+                    ? '寫入中...'
+                    : '確認寫入資料庫'
+          }}
         </button>
       </div>
     </div>
 
+    <!-- 開發除錯 -->
     <details
         v-if="permitData"
         class="mt-8 rounded-xl border border-slate-200 bg-white"
     >
-      <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-slate-700">
+      <summary
+          class="cursor-pointer px-4 py-3 text-sm font-medium text-slate-700"
+      >
         開發除錯資訊
       </summary>
 
-      <div class="space-y-6 border-t border-slate-200 p-4">
+      <div
+          class="space-y-6 border-t border-slate-200 p-4"
+      >
         <div>
-          <p class="mb-2 text-sm font-medium text-slate-700">
+          <p
+              class="mb-2 text-sm font-medium text-slate-700"
+          >
             結構化解析結果
           </p>
 
@@ -415,8 +679,12 @@ function handleSaveToDatabase() {
         </div>
 
         <div v-if="parsedPdf">
-          <div class="mb-3 flex items-center justify-between">
-            <p class="text-sm font-medium text-slate-700">
+          <div
+              class="mb-3 flex items-center justify-between"
+          >
+            <p
+                class="text-sm font-medium text-slate-700"
+            >
               PDF 原始文字
             </p>
 

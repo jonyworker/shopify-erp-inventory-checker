@@ -11,12 +11,13 @@
     "deploy": "npm run build && gh-pages -d dist"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.116.0",
     "@vitejs/plugin-vue": "latest",
     "papaparse": "latest",
     "pdfjs-dist": "latest",
+    "tesseract.js": "latest",
     "vite": "latest",
     "vue": "latest",
-    "tesseract.js": "latest",
     "xlsx": "latest",
     "xlsx-js-style": "^1.2.0"
   },
