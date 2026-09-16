@@ -10,6 +10,7 @@ import PromotionPriceBuilderTool from './tools/promotion/PromotionPriceBuilderTo
 import ShopifyPromotionLaunchTool from './tools/promotion/ShopifyPromotionLaunchTool.vue'
 import ShopifyPromotionEndTool from './tools/promotion/ShopifyPromotionEndTool.vue'
 import CustomsDeclarationParser from './tools/customs/CustomsDeclarationParser.vue'
+import PermitPdfParser from './tools/permits/PermitPdfParser.vue'
 
 const currentTool = ref('inventoryShopify')
 
@@ -75,6 +76,16 @@ const toolGroups = [
       }
     ]
   },
+  {
+    label: '公文工具',
+    description: '管理警政署槍砲彈藥簽審核准公文',
+    tools: [
+      {
+        label: '簽審公文管理',
+        value: 'permitPdfParser'
+      }
+    ]
+  },
   // {
   //   label: '未來工具',
   //   description: '預留後續擴充功能',
@@ -121,6 +132,9 @@ const currentComponent = computed(() => {
 
     case 'customsDeclarationParser':
       return CustomsDeclarationParser
+
+    case 'permitPdfParser':
+      return PermitPdfParser
 
     default:
       return InventoryShopifyChecker
