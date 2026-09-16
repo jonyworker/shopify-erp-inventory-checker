@@ -13,6 +13,7 @@ import ShopifyPromotionEndTool from './tools/promotion/ShopifyPromotionEndTool.v
 import CustomsDeclarationParser from './tools/customs/CustomsDeclarationParser.vue'
 import PermitPdfParser from './tools/permits/PermitPdfParser.vue'
 import LoginPanel from './components/auth/LoginPanel.vue'
+import PermitSearch from './tools/permits/PermitSearch.vue'
 
 
 const currentTool = ref('inventoryShopify')
@@ -86,6 +87,10 @@ const toolGroups = [
       {
         label: '簽審公文管理',
         value: 'permitPdfParser'
+      },
+      {
+        label: '簽審資料查詢',
+        value: 'permitSearch'
       }
     ]
   },
@@ -138,6 +143,9 @@ const currentComponent = computed(() => {
 
     case 'permitPdfParser':
       return PermitPdfParser
+
+    case 'permitSearch':
+      return PermitSearch
 
     default:
       return InventoryShopifyChecker
