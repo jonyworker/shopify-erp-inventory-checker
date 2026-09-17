@@ -83,6 +83,28 @@ function getPermitStatus(expirationDate) {
   }
 }
 
+function isExpiredMoreThan30Days(expirationDate) {
+  if (!expirationDate) {
+    return false
+  }
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const expiration = new Date(expirationDate)
+  expiration.setHours(0, 0, 0, 0)
+
+  const diffTime =
+      today.getTime() - expiration.getTime()
+
+  const expiredDays =
+      Math.floor(
+          diffTime / (1000 * 60 * 60 * 24)
+      )
+
+  return expiredDays > 30
+}
+
 const filteredResults = computed(() => {
   const keywords = keyword.value
       .trim()
@@ -91,6 +113,14 @@ const filteredResults = computed(() => {
       .filter(Boolean)
 
   return results.value.filter((item) => {
+    if (
+        isExpiredMoreThan30Days(
+            item.permits?.expiration_date
+        )
+    ) {
+      return false
+    }
+
     const status = getPermitStatus(
         item.permits?.expiration_date
     )

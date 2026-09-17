@@ -152,6 +152,13 @@ const currentComponent = computed(() => {
   }
 })
 
+const showLoginPanel = computed(() => {
+  return [
+    'permitPdfParser',
+    'permitSearch'
+  ].includes(currentTool.value)
+})
+
 onMounted(() => {
   initializeAuth()
 })
@@ -175,13 +182,29 @@ onMounted(() => {
           </p>
         </div>
 
-        <ToolSwitcher
-            v-model="currentTool"
-            :groups="toolGroups"
-        />
+        <div
+          class="
+            flex
+            w-full
+            items-end
+            gap-3
+            sm:w-auto
+          "
+        >
+          <div class="min-w-[320px] flex-1">
+            <ToolSwitcher
+                v-model="currentTool"
+                :groups="toolGroups"
+            />
+          </div>
+
+          <LoginPanel
+              v-if="showLoginPanel"
+              class="shrink-0"
+          />
+        </div>
       </section>
 
-      <LoginPanel class="mb-6" />
       <component :is="currentComponent" />
     </div>
   </main>
