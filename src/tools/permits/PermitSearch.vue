@@ -6,14 +6,22 @@ import {
 } from 'vue'
 
 import {
-  getAllPermitRecords
+  getAllPermitRecords,
+  getPermitById
 } from '@/utils/permits/permitRepository'
+
+import PermitDetailDrawer
+  from '@/tools/permits/PermitDetailDrawer.vue'
 
 const keyword = ref('')
 const isSearching = ref(false)
 const searchError = ref('')
 const results = ref([])
 const selectedStatus = ref('all')
+const selectedPermit = ref(null)
+const isPermitDetailOpen = ref(false)
+const isPermitDetailLoading = ref(false)
+const permitDetailError = ref('')
 
 function handleClear() {
   keyword.value = ''
@@ -140,6 +148,34 @@ async function loadAllPermitRecords() {
   } finally {
     isSearching.value = false
   }
+}
+
+async function openPermitDetail(permitId) {
+  if (!permitId) {
+    return
+  }
+
+  permitDetailError.value = ''
+  selectedPermit.value = null
+  isPermitDetailOpen.value = true
+
+  try {
+    isPermitDetailLoading.value = true
+
+    selectedPermit.value =
+        await getPermitById(permitId)
+  } catch (error) {
+    console.error(error)
+
+    permitDetailError.value =
+        `讀取公文詳情失敗：${error.message}`
+  } finally {
+    isPermitDetailLoading.value = false
+  }
+}
+
+function closePermitDetail() {
+  isPermitDetailOpen.value = false
 }
 
 onMounted(() => {
@@ -273,6 +309,10 @@ onMounted(() => {
             </th>
 
             <th class="px-4 py-3">
+              稅率
+            </th>
+
+            <th class="px-4 py-3">
               廠牌
             </th>
 
@@ -323,16 +363,36 @@ onMounted(() => {
 
             <!-- 申辦案號 -->
             <td
-                class="whitespace-nowrap px-4 py-3 text-slate-700"
+                class="whitespace-nowrap px-4 py-3"
             >
-              {{ item.permits?.application_no }}
+              <button
+                  type="button"
+                  class="font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 transition hover:text-blue-600 hover:decoration-blue-400"
+                  @click="
+                    openPermitDetail(
+                      item.permits?.id
+                    )
+                  "
+              >
+                {{ item.permits?.application_no }}
+              </button>
             </td>
 
             <!-- 簽審核准文號 -->
             <td
-                class="whitespace-nowrap px-4 py-3 font-medium text-slate-900"
+                class="whitespace-nowrap px-4 py-3"
             >
-              {{ item.permits?.certificate_no }}
+              <button
+                  type="button"
+                  class="font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 transition hover:text-blue-600 hover:decoration-blue-400"
+                  @click="
+                    openPermitDetail(
+                      item.permits?.id
+                    )
+                  "
+              >
+                {{ item.permits?.certificate_no }}
+              </button>
             </td>
 
             <!-- 證書項次 -->
@@ -347,6 +407,71 @@ onMounted(() => {
                 class="whitespace-nowrap px-4 py-3 font-mono text-slate-700"
             >
               {{ item.ccc_code }}
+            </td>
+
+            <!-- 稅率 -->
+            <td
+                class="whitespace-nowrap px-4 py-3 text-slate-700"
+            >
+              <div
+                  v-if="item.tax_rate !== null"
+                  class="group relative inline-flex"
+              >
+                <span
+                    class="cursor-help border-b border-dashed border-slate-400"
+                >
+                  {{ item.tax_rate }}%
+                </span>
+
+                <div
+                    v-if="item.tax_description"
+                    class="
+                      pointer-events-none
+                      absolute
+                      left-1/2
+                      top-full
+                      z-50
+                      mt-2
+                      hidden
+                      w-96
+                      -translate-x-1/2
+                      whitespace-normal
+                      break-words
+                      rounded-lg
+                      bg-slate-900
+                      px-4
+                      py-3
+                      text-left
+                      text-xs
+                      leading-5
+                      text-white
+                      shadow-lg
+                      group-hover:block
+                    "
+                >
+                  {{ item.tax_description }}
+
+                  <div
+                      class="
+                        absolute
+                        -top-1
+                        left-1/2
+                        h-2
+                        w-2
+                        -translate-x-1/2
+                        rotate-45
+                        bg-slate-900
+                      "
+                  />
+                </div>
+              </div>
+
+              <span
+                  v-else
+                  class="text-amber-600"
+              >
+                尚未設定
+              </span>
             </td>
 
             <!-- 廠牌 -->
@@ -456,4 +581,11 @@ onMounted(() => {
       </div>
     </div>
   </section>
+  <PermitDetailDrawer
+      :is-open="isPermitDetailOpen"
+      :permit="selectedPermit"
+      :is-loading="isPermitDetailLoading"
+      :error="permitDetailError"
+      @close="closePermitDetail"
+  />
 </template>

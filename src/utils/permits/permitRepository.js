@@ -262,32 +262,176 @@ export async function getExpiringPermits(days = 45) {
 }
 
 export async function getAllPermitRecords() {
-    const { data, error } = await supabase
-        .from('permit_items')
-        .select(`
-      id,
-      item_no,
-      ccc_code,
-      country,
-      brand,
-      goods_name,
-      model,
-      review_result,
-      created_at,
-      permits (
-        id,
-        application_no,
-        certificate_no,
-        issue_date,
-        expiration_date,
-        goods_type,
-        applicant
-      )
-    `)
-        .order(
-            'created_at',
-            { ascending: false }
+    const [
+        permitResult,
+        taxResult
+    ] = await Promise.all([
+        supabase
+            .from('permit_items')
+            .select(`
+              id,
+              item_no,
+              ccc_code,
+              country,
+              brand,
+              goods_name,
+              model,
+              review_result,
+              created_at,
+              permits (
+                id,
+                application_no,
+                certificate_no,
+                issue_date,
+                expiration_date,
+                goods_type,
+                applicant
+              )
+            `)
+            .order(
+                'created_at',
+                { ascending: false }
+            ),
+
+        supabase
+            .from('ccc_tax_rates')
+            .select(`
+              ccc_code,
+              tax_rate,
+              description
+            `)
+            .eq('is_active', true)
+    ])
+
+    if (permitResult.error) {
+        throw permitResult.error
+    }
+
+    if (taxResult.error) {
+        throw taxResult.error
+    }
+
+    const taxMap = new Map(
+        (taxResult.data ?? []).map(
+            (item) => [
+                item.ccc_code,
+                item
+            ]
         )
+    )
+
+    return (permitResult.data ?? []).map(
+        (item) => {
+            const taxData =
+                taxMap.get(item.ccc_code)
+
+            return {
+                ...item,
+
+                tax_rate:
+                    taxData?.tax_rate ?? null,
+
+                tax_description:
+                    taxData?.description ?? ''
+            }
+        }
+    )
+}
+
+export async function getPermitById(permitId) {
+    const [
+        permitResult,
+        taxResult
+    ] = await Promise.all([
+        supabase
+            .from('permits')
+            .select(`
+              id,
+              application_no,
+              certificate_no,
+              issue_date,
+              expiration_date,
+              goods_type,
+              applicant,
+              created_at,
+              permit_items (
+                id,
+                item_no,
+                ccc_code,
+                country,
+                brand,
+                goods_name,
+                model,
+                review_result,
+                created_at
+              )
+            `)
+            .eq('id', permitId)
+            .single(),
+
+        supabase
+            .from('ccc_tax_rates')
+            .select(`
+              ccc_code,
+              tax_rate,
+              description
+            `)
+            .eq('is_active', true)
+    ])
+
+    if (permitResult.error) {
+        throw permitResult.error
+    }
+
+    if (taxResult.error) {
+        throw taxResult.error
+    }
+
+    const taxMap = new Map(
+        (taxResult.data ?? []).map(
+            (item) => [
+                item.ccc_code,
+                item
+            ]
+        )
+    )
+
+    const permitItems = [
+        ...(permitResult.data.permit_items ?? [])
+    ]
+        .map((item) => {
+            const taxData =
+                taxMap.get(item.ccc_code)
+
+            return {
+                ...item,
+
+                tax_rate:
+                    taxData?.tax_rate ?? null,
+
+                tax_description:
+                    taxData?.description ?? ''
+            }
+        })
+        .sort((a, b) => {
+            return Number(a.item_no) - Number(b.item_no)
+        })
+
+    return {
+        ...permitResult.data,
+        permit_items: permitItems
+    }
+}
+
+export async function getCccTaxRates() {
+    const { data, error } = await supabase
+        .from('ccc_tax_rates')
+        .select(`
+          ccc_code,
+          tax_rate,
+          description
+        `)
+        .eq('is_active', true)
 
     if (error) {
         throw error

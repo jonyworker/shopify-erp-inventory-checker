@@ -1,5 +1,4 @@
 create extension if not exists pgcrypto;
-
 create table if not exists public.permits (
                                               id uuid primary key default gen_random_uuid(),
 
@@ -14,11 +13,8 @@ create table if not exists public.permits (
 
     created_at timestamptz not null default now()
     );
-
 comment on table public.permits
 is '警政署槍砲彈藥簽審核准公文';
-
-
 create table if not exists public.permit_items (
                                                    id uuid primary key default gen_random_uuid(),
 
@@ -36,11 +32,8 @@ create table if not exists public.permit_items (
 
     created_at timestamptz not null default now()
     );
-
 comment on table public.permit_items
 is '公文明細';
-
-
 create table if not exists public.notification_recipients (
                                                               id uuid primary key default gen_random_uuid(),
 
@@ -51,8 +44,6 @@ create table if not exists public.notification_recipients (
 
     created_at timestamptz not null default now()
     );
-
-
 create table if not exists public.notification_logs (
                                                         id uuid primary key default gen_random_uuid(),
 
@@ -65,69 +56,50 @@ create table if not exists public.notification_logs (
     sent_at timestamptz not null default now(),
     created_at timestamptz not null default now()
     );
-
-
 alter table public.permits
     enable row level security;
-
 alter table public.permit_items
     enable row level security;
-
 alter table public.notification_recipients
     enable row level security;
-
 alter table public.notification_logs
     enable row level security;
-
-
 drop policy if exists
   "Authenticated users can read permits"
 on public.permits;
-
 create policy
   "Authenticated users can read permits"
 on public.permits
 for select
                     to authenticated
                     using (true);
-
-
 drop policy if exists
   "Authenticated users can insert permits"
 on public.permits;
-
 create policy
   "Authenticated users can insert permits"
 on public.permits
 for insert
 to authenticated
 with check (true);
-
-
 drop policy if exists
   "Authenticated users can read permit items"
 on public.permit_items;
-
 create policy
   "Authenticated users can read permit items"
 on public.permit_items
 for select
                                 to authenticated
                                 using (true);
-
-
 drop policy if exists
   "Authenticated users can insert permit items"
 on public.permit_items;
-
 create policy
   "Authenticated users can insert permit items"
 on public.permit_items
 for insert
 to authenticated
 with check (true);
-
-
 create or replace function public.create_permit_with_items(
   p_application_no text,
   p_certificate_no text,
