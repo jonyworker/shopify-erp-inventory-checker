@@ -2,8 +2,19 @@
 import {
   computed,
   onBeforeUnmount,
-  onMounted
+  onMounted,
+  ref,
+  watch
 } from 'vue'
+
+import {
+  updatePermitApplicationNo
+} from '@/utils/permits/permitRepository'
+
+const isEditingApplicationNo = ref(false)
+const applicationNoInput = ref('')
+const applicationNoError = ref('')
+const isSavingApplicationNo = ref(false)
 
 const props = defineProps({
   isOpen: {
@@ -99,11 +110,90 @@ function getPermitStatus(expirationDate) {
   }
 }
 
+function startEditApplicationNo() {
+  applicationNoInput.value =
+      props.permit?.application_no ?? ''
+
+  applicationNoError.value = ''
+  isEditingApplicationNo.value = true
+}
+
+function cancelEditApplicationNo() {
+  applicationNoInput.value =
+      props.permit?.application_no ?? ''
+
+  applicationNoError.value = ''
+  isEditingApplicationNo.value = false
+}
+
+async function saveApplicationNo() {
+  applicationNoError.value = ''
+
+  const value =
+      applicationNoInput.value.trim()
+
+  if (!/^\d{12}$/.test(value)) {
+    applicationNoError.value =
+        '申辦案號必須為 12 碼數字。'
+
+    return
+  }
+
+  if (
+      value ===
+      props.permit?.application_no
+  ) {
+    isEditingApplicationNo.value = false
+    return
+  }
+
+  const confirmed = window.confirm(
+      `確定要將申辦案號\n${props.permit?.application_no}\n修改為\n${value}？`
+  )
+
+  if (!confirmed) {
+    return
+  }
+
+  try {
+    isSavingApplicationNo.value = true
+
+    const updatedPermit =
+        await updatePermitApplicationNo(
+            props.permit.id,
+            value
+        )
+
+    props.permit.application_no =
+        updatedPermit.application_no
+
+    isEditingApplicationNo.value = false
+  } catch (error) {
+    applicationNoError.value =
+        error instanceof Error
+            ? error.message
+            : '修改申辦案號失敗'
+  } finally {
+    isSavingApplicationNo.value = false
+  }
+}
+
 const permitStatus = computed(() => {
   return getPermitStatus(
       props.permit?.expiration_date
   )
 })
+
+watch(
+    () => props.permit?.application_no,
+    (value) => {
+      applicationNoInput.value =
+          value ?? ''
+    },
+    {
+      immediate: true
+    }
+)
 
 onMounted(() => {
   window.addEventListener(
@@ -210,13 +300,104 @@ onBeforeUnmount(() => {
                 <div
                     class="rounded-xl border border-slate-200 bg-slate-50 p-4"
                 >
-                  <p
-                      class="text-xs font-medium text-slate-500"
+                  <div
+                      class="flex items-center justify-between gap-3"
                   >
-                    申辦案號
-                  </p>
+                    <p
+                        class="text-xs font-medium text-slate-500"
+                    >
+                      申辦案號
+                    </p>
+
+                    <button
+                        v-if="!isEditingApplicationNo"
+                        type="button"
+                        class="text-xs font-medium text-blue-600 hover:text-blue-700"
+                        @click="startEditApplicationNo"
+                    >
+                      編輯
+                    </button>
+                  </div>
+
+                  <template v-if="isEditingApplicationNo">
+                    <input
+                        v-model="applicationNoInput"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="12"
+                        class="
+                          mt-2
+                          w-full
+                          rounded-lg
+                          border
+                          border-slate-300
+                          bg-white
+                          px-3
+                          py-2
+                          text-sm
+                          font-medium
+                          text-slate-950
+                          outline-none
+                          focus:border-blue-500
+                        "
+                        placeholder="請輸入 12 碼申辦案號"
+                    >
+
+                    <p
+                        v-if="applicationNoError"
+                        class="mt-2 text-xs text-red-600"
+                    >
+                      {{ applicationNoError }}
+                    </p>
+
+                    <div
+                        class="mt-3 flex gap-2"
+                    >
+                      <button
+                          type="button"
+                          :disabled="isSavingApplicationNo"
+                          class="
+                            rounded-lg
+                            bg-slate-900
+                            px-3
+                            py-2
+                            text-xs
+                            font-medium
+                            text-white
+                            disabled:cursor-not-allowed
+                            disabled:opacity-50
+                          "
+                          @click="saveApplicationNo"
+                      >
+                        {{
+                          isSavingApplicationNo
+                              ? '儲存中...'
+                              : '儲存'
+                        }}
+                      </button>
+
+                      <button
+                          type="button"
+                          :disabled="isSavingApplicationNo"
+                          class="
+                            rounded-lg
+                            border
+                            border-slate-300
+                            px-3
+                            py-2
+                            text-xs
+                            font-medium
+                            text-slate-600
+                          "
+                          @click="cancelEditApplicationNo"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </template>
 
                   <p
+                      v-else
                       class="mt-2 font-semibold text-slate-950"
                   >
                     {{ permit.application_no }}

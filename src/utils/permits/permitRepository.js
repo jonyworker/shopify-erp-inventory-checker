@@ -439,3 +439,39 @@ export async function getCccTaxRates() {
 
     return data ?? []
 }
+
+export async function updatePermitApplicationNo(
+    permitId,
+    applicationNo
+) {
+    const normalizedApplicationNo =
+        String(applicationNo ?? '').trim()
+
+    if (!/^\d{12}$/.test(normalizedApplicationNo)) {
+        throw new Error(
+            '申辦案號必須為 12 碼數字。'
+        )
+    }
+
+    const { data, error } = await supabase
+        .from('permits')
+        .update({
+            application_no:
+            normalizedApplicationNo
+        })
+        .eq('id', permitId)
+        .select()
+        .single()
+
+    if (error) {
+        if (error.code === '23505') {
+            throw new Error(
+                '此申辦案號已存在，請確認是否輸入錯誤。'
+            )
+        }
+
+        throw error
+    }
+
+    return data
+}
