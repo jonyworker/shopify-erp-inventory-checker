@@ -193,18 +193,48 @@ async function handleSaveToDatabase() {
 </script>
 
 <template>
+  <header class="mb-8">
+    <p
+        class="
+          text-xs
+          font-bold
+          uppercase
+          tracking-[0.2em]
+          text-slate-400
+        "
+    >
+      PERMIT
+    </p>
+
+    <h1
+        class="
+          mt-2
+          text-2xl
+          font-bold
+          tracking-tight
+          text-slate-950
+          md:text-3xl
+        "
+    >
+      槍砲彈藥簽審公文匯入
+    </h1>
+
+    <p
+        class="
+          mt-2
+          max-w-2xl
+          text-sm
+          leading-6
+          text-slate-500
+        "
+    >
+      輸入申辦案號並上傳警政署簽審 PDF，系統將自動解析公文與商品明細存入PTS資料庫。
+    </p>
+  </header>
   <section
       class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
   >
-    <div>
-      <h2 class="text-xl font-bold text-slate-950">
-        槍砲彈藥簽審公文管理
-      </h2>
 
-      <p class="mt-2 text-sm text-slate-500">
-        輸入申辦案號並上傳警政署簽審 PDF，系統將自動解析公文與商品明細。
-      </p>
-    </div>
 
     <!-- 輸入區 -->
     <div class="mt-6 space-y-5">

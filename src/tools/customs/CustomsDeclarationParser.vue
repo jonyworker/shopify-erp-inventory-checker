@@ -101,14 +101,47 @@ function exportExcel() {
 
 <template>
   <section class="space-y-6">
-    <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <p class="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Customs Tools</p>
-      <h2 class="mt-2 text-2xl font-bold text-slate-950">進出口報單整理</h2>
-      <p class="mt-2 max-w-4xl text-sm leading-6 text-slate-500">
-        從報單 PDF 擷取 Item No.、Description、HS CODE、警字同意書號碼、報單號碼、報單項次與單件淨重，整理成 Invoice 紀錄 Excel。淨重(pcs) 會以該項次總淨重 ÷ EA / PCE / PCS 數量計算並四捨五入至小數點後 2 位；Qty、Unit、Price 與 Amount 保持空白，由人員後續補齊。
+    <header class="mb-8">
+      <p
+          class="
+          text-xs
+          font-bold
+          uppercase
+          tracking-[0.2em]
+          text-slate-400
+        "
+      >
+        CUSTOMS
       </p>
-    </div>
 
+      <h1
+          class="
+          mt-2
+          text-2xl
+          font-bold
+          tracking-tight
+          text-slate-950
+          md:text-3xl
+        "
+      >
+        進出口報單整理
+      </h1>
+
+      <p
+          class="
+          mt-2
+          max-w-2xl
+          text-sm
+          leading-6
+          text-slate-500
+        "
+      >
+        從報單 PDF 擷取 Item No.、Description、HS CODE、警字同意書號碼、報單號碼、
+        報單項次與單件淨重，整理成 Invoice 紀錄 Excel。淨重(pcs) 會以該項次總淨重 ÷
+        EA / PCE / PCS 數量計算並四捨五入至小數點後 2 位；Qty、Unit、Price 與
+        Amount 保持空白，由人員後續補齊。
+      </p>
+    </header>
     <div v-if="errorMessage" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
       {{ errorMessage }}
     </div>

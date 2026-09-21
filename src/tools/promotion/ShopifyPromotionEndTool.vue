@@ -335,19 +335,46 @@ function exportEndCsv() {
 <template>
   <section class="space-y-6">
     <!-- Header -->
-    <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <p class="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
-        Shopify Promotion
+    <header class="mb-8">
+      <p
+          class="
+          text-xs
+          font-bold
+          uppercase
+          tracking-[0.2em]
+          text-slate-400
+        "
+      >
+        SHOPIFY
       </p>
 
-      <h2 class="mt-2 text-2xl font-bold text-slate-950">
+      <h1
+          class="
+          mt-2
+          text-2xl
+          font-bold
+          tracking-tight
+          text-slate-950
+          md:text-3xl
+        "
+      >
         Promotion 商品下架
-      </h2>
+      </h1>
 
-      <p class="mt-2 text-sm leading-6 text-slate-500">
+      <p
+          class="
+          mt-2
+          max-w-2xl
+          text-sm
+          leading-6
+          text-slate-500
+        "
+      >
         活動結束時使用。先在 Shopify 用活動 Tag 篩選本次活動商品並匯出最新 CSV，再由工具恢復正常售價並移除活動 Tag。
       </p>
-    </div>
+    </header>
+
+
 
     <!-- Error -->
     <div

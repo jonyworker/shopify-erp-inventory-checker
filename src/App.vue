@@ -1,26 +1,50 @@
 <script setup>
-import { computed, ref, onMounted } from 'vue'
+import {
+  computed,
+  ref,
+  onMounted
+} from 'vue'
+
 import { initializeAuth } from '@/stores/authState'
-import ToolSwitcher from './components/ToolSwitcher.vue'
+
+import AppSidebar from './components/AppSidebar.vue'
+
 import InventoryShopifyChecker from './tools/inventory/InventoryShopifyChecker.vue'
 import InventoryRutenChecker from './tools/inventory/InventoryRutenChecker.vue'
+
 import PriceErpChecker from './tools/price/PriceErpChecker.vue'
 import PriceShopifyChecker from './tools/price/PriceShopifyChecker.vue'
 import PriceRutenChecker from './tools/price/PriceRutenChecker.vue'
+
 import PromotionPriceBuilderTool from './tools/promotion/PromotionPriceBuilderTool.vue'
 import ShopifyPromotionLaunchTool from './tools/promotion/ShopifyPromotionLaunchTool.vue'
 import ShopifyPromotionEndTool from './tools/promotion/ShopifyPromotionEndTool.vue'
+
 import CustomsDeclarationParser from './tools/customs/CustomsDeclarationParser.vue'
+
 import PermitPdfParser from './tools/permits/PermitPdfParser.vue'
-import LoginPanel from './components/auth/LoginPanel.vue'
 import PermitSearch from './tools/permits/PermitSearch.vue'
 
 
+/* ========================================
+   App State
+======================================== */
+
 const currentTool = ref('inventoryShopify')
+
+const sidebarCollapsed = ref(false)
+
+const mobileSidebarOpen = ref(false)
+
+
+/* ========================================
+   Tool Groups
+======================================== */
 
 const toolGroups = [
   {
     label: '庫存工具',
+    icon: 'inventory',
     description: '比對 ERP 與通路庫存資料',
     tools: [
       {
@@ -33,8 +57,10 @@ const toolGroups = [
       }
     ]
   },
+
   {
     label: '價格工具',
+    icon: 'price',
     description: '比對 RRP、ERP 與通路價格資料',
     tools: [
       {
@@ -51,8 +77,10 @@ const toolGroups = [
       }
     ]
   },
+
   {
     label: 'Shopify 工具',
+    icon: 'shopify',
     description: '活動商品上架與下架管理',
     tools: [
       {
@@ -72,6 +100,7 @@ const toolGroups = [
 
   {
     label: '報關工具',
+    icon: 'customs',
     description: '整理進出口報單與 Invoice 紀錄',
     tools: [
       {
@@ -80,37 +109,45 @@ const toolGroups = [
       }
     ]
   },
+
   {
     label: '公文工具',
+    icon: 'permit',
     description: '管理警政署槍砲彈藥簽審核准公文',
     tools: [
       {
-        label: '簽審公文管理',
-        value: 'permitPdfParser'
-      },
-      {
         label: '簽審資料查詢',
         value: 'permitSearch'
+      },
+      {
+        label: '簽審公文匯入',
+        value: 'permitPdfParser'
       }
     ]
-  },
-  // {
-  //   label: '未來工具',
-  //   description: '預留後續擴充功能',
-  //   tools: [
-  //     {
-  //       label: '未來工具一',
-  //       value: 'future-1',
-  //       disabled: true
-  //     },
-  //     {
-  //       label: '未來工具二',
-  //       value: 'future-2',
-  //       disabled: true
-  //     }
-  //   ]
-  // }
+  }
+
+  // 未來工具可以繼續加在這裡
 ]
+
+
+/* ========================================
+   Current Tool
+======================================== */
+
+const currentToolInfo = computed(() => {
+  return toolGroups
+      .flatMap(group => group.tools)
+      .find(tool => tool.value === currentTool.value)
+})
+
+const currentToolLabel = computed(() => {
+  return currentToolInfo.value?.label ?? 'PTS Internal Tools'
+})
+
+
+/* ========================================
+   Current Component
+======================================== */
 
 const currentComponent = computed(() => {
   switch (currentTool.value) {
@@ -152,60 +189,153 @@ const currentComponent = computed(() => {
   }
 })
 
-const showLoginPanel = computed(() => {
-  return [
-    'permitPdfParser',
-    'permitSearch'
-  ].includes(currentTool.value)
-})
+
+/* ========================================
+   Auth
+======================================== */
 
 onMounted(() => {
   initializeAuth()
 })
 </script>
 
+
 <template>
-  <main class="min-h-screen px-4 py-8 md:px-8">
-    <div class="mx-auto max-w-7xl">
-      <section class="mb-6 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p class="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-            Internal Tools
-          </p>
+  <div class="min-h-screen bg-slate-50">
 
-          <h1 class="mt-2 text-2xl font-bold tracking-tight text-slate-950 md:text-3xl">
-            公司內部工具箱
-          </h1>
+    <!-- ========================================
+         Sidebar
+    ========================================= -->
 
-          <p class="mt-2 text-sm text-slate-500">
-            庫存、價格、Shopify 活動與報關工具集中管理。
-          </p>
-        </div>
+    <AppSidebar
+        v-model="currentTool"
+        v-model:mobile-open="mobileSidebarOpen"
+        :groups="toolGroups"
+        @update:collapsed="sidebarCollapsed = $event"
+    />
 
-        <div
+
+    <!-- ========================================
+         Main
+    ========================================= -->
+
+    <main
+        class="
+        min-h-screen
+        transition-[padding]
+        duration-200
+      "
+        :class="
+        sidebarCollapsed
+          ? 'lg:pl-[72px]'
+          : 'lg:pl-72'
+      "
+    >
+
+      <!-- ========================================
+           Mobile Header
+      ========================================= -->
+
+      <header
           class="
+          sticky
+          top-0
+          z-30
+          flex
+          h-16
+          items-center
+          border-b
+          border-slate-200
+          bg-white/95
+          px-4
+          backdrop-blur
+          lg:hidden
+        "
+      >
+        <!-- Hamburger -->
+        <button
+            type="button"
+            class="
+            -ml-1
             flex
-            w-full
-            items-end
-            gap-3
-            sm:w-auto
+            h-10
+            w-10
+            shrink-0
+            items-center
+            justify-center
+            rounded-lg
+            text-slate-600
+            transition
+            hover:bg-slate-100
+            hover:text-slate-950
           "
+            aria-label="開啟選單"
+            @click="mobileSidebarOpen = true"
         >
-          <div class="min-w-[320px] flex-1">
-            <ToolSwitcher
-                v-model="currentTool"
-                :groups="toolGroups"
+          <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              class="h-5 w-5"
+          >
+            <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.8"
+                d="M4 6h16M4 12h16M4 18h16"
             />
-          </div>
+          </svg>
+        </button>
 
-          <LoginPanel
-              v-if="showLoginPanel"
-              class="shrink-0"
-          />
+
+        <!-- Current Tool -->
+        <div class="ml-3 min-w-0">
+          <p
+              class="
+              text-[9px]
+              font-bold
+              uppercase
+              tracking-[0.2em]
+              text-slate-400
+            "
+          >
+            PTS Internal Tools
+          </p>
+
+          <p
+              class="
+              mt-0.5
+              truncate
+              text-sm
+              font-semibold
+              text-slate-900
+            "
+          >
+            {{ currentToolLabel }}
+          </p>
         </div>
-      </section>
+      </header>
 
-      <component :is="currentComponent" />
-    </div>
-  </main>
+
+      <!-- ========================================
+           Content
+      ========================================= -->
+
+      <div
+          class="
+          mx-auto
+          max-w-7xl
+          px-4
+          py-6
+          md:px-8
+          md:py-8
+        "
+      >
+
+        <!-- Current Tool Component -->
+        <component :is="currentComponent" />
+
+      </div>
+    </main>
+  </div>
 </template>

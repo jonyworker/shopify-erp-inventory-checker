@@ -239,20 +239,44 @@ function getStatusClass(status) {
 
 <template>
   <div>
-    <header class="mb-8 rounded-2xl bg-white p-6 shadow-sm">
-      <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <p class="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Price Tool</p>
+    <header class="mb-8">
+      <p
+          class="
+          text-xs
+          font-bold
+          uppercase
+          tracking-[0.2em]
+          text-slate-400
+        "
+      >
+        PRICE
+      </p>
 
-          <h1 class="mt-2 text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
-            RRP / Ruten 價格比對工具
-          </h1>
+      <h1
+          class="
+          mt-2
+          text-2xl
+          font-bold
+          tracking-tight
+          text-slate-950
+          md:text-3xl
+        "
+      >
+        RRP / Ruten 價格比對
+      </h1>
 
-          <p class="mt-3 max-w-3xl text-slate-600">
-            匯入 RRP 多工作表價目表與 Ruten 商品 Excel，選擇 Item、Retail Price、賣家自用料號與售價欄位，系統會自動比對 Ruten 售價是否與 RRP 一致。
-          </p>
-        </div>
-      </div>
+      <p
+          class="
+          mt-2
+          max-w-2xl
+          text-sm
+          leading-6
+          text-slate-500
+        "
+      >
+        匯入 RRP 多工作表價目表與 Ruten 商品 Excel，選擇 Item、Retail Price、
+        賣家自用料號與售價欄位，系統會自動比對 Ruten 售價是否與 RRP 一致。
+      </p>
     </header>
 
     <div

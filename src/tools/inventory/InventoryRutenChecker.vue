@@ -186,15 +186,43 @@ function getStatusClass(status) {
 
 <template>
   <div>
-    <header class="mb-8 rounded-2xl bg-white p-6 shadow-sm">
-      <p class="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Inventory Tool</p>
+    <header class="mb-8">
+      <p
+          class="
+          text-xs
+          font-bold
+          uppercase
+          tracking-[0.2em]
+          text-slate-400
+        "
+      >
+        INVENTORY
+      </p>
 
-      <h1 class="mt-2 text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
-        ERP / Ruten 庫存比對工具
+      <h1
+          class="
+          mt-2
+          text-2xl
+          font-bold
+          tracking-tight
+          text-slate-950
+          md:text-3xl
+        "
+      >
+        ERP / Ruten 庫存比對
       </h1>
 
-      <p class="mt-3 max-w-2xl text-slate-600">
-        匯入 ERP Excel 與 Ruten Excel，系統會依品項編碼比對庫存，快速找出一致、數量不一致、ERP 獨有與 Ruten 獨有的資料。
+      <p
+          class="
+          mt-2
+          max-w-2xl
+          text-sm
+          leading-6
+          text-slate-500
+        "
+      >
+        匯入 ERP 與 Ruten 庫存資料，比對 SKU 與庫存數量，
+        快速找出一致、數量不一致及單一來源資料。
       </p>
     </header>
 

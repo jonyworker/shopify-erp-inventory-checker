@@ -151,13 +151,46 @@ function badgeClass(status) {
 
 <template>
   <section class="space-y-6">
-    <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <p class="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Promotion Price Builder</p>
-      <h2 class="mt-2 text-2xl font-bold text-slate-950">Promotion 價格產生器</h2>
-      <p class="mt-2 max-w-4xl text-sm leading-6 text-slate-500">
-        香港新版 Promotion 只有 SKU 與折扣百分比時使用。系統會用 SKU 到 RRP 取得 Retail Price，再依 12% OFF 等區段折扣計算優惠價，產生可直接匯入「Promotion 商品上架」的 Excel。
+    <header class="mb-8">
+      <p
+          class="
+          text-xs
+          font-bold
+          uppercase
+          tracking-[0.2em]
+          text-slate-400
+        "
+      >
+        SHOPIFY
       </p>
-    </div>
+
+      <h1
+          class="
+          mt-2
+          text-2xl
+          font-bold
+          tracking-tight
+          text-slate-950
+          md:text-3xl
+        "
+      >
+        Promotion 價格產生器
+      </h1>
+
+      <p
+          class="
+          mt-2
+          max-w-2xl
+          text-sm
+          leading-6
+          text-slate-500
+        "
+      >
+        香港新版 Promotion 只有 SKU 與折扣百分比時使用。
+        系統會用 SKU 到 RRP 取得 Retail Price，再依 12% OFF 等區段折扣計算優惠價，
+        產生可直接匯入「Promotion 商品上架」的 Excel。
+      </p>
+    </header>
 
     <div v-if="errorMessage" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
       {{ errorMessage }}
