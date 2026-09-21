@@ -356,6 +356,8 @@ export async function getPermitById(permitId) {
               status,
               reminder_paused,
               completed_at,
+              invalidated_at,
+              invalidation_reason,
               created_at,
               permit_items (
                 id,
@@ -532,7 +534,9 @@ export async function completePermit(permitId) {
         .update({
             status: 'completed',
             reminder_paused: false,
-            completed_at: new Date().toISOString()
+            completed_at: new Date().toISOString(),
+            invalidated_at: null,
+            invalidation_reason: null
         })
         .eq('id', permitId)
         .select()
@@ -546,7 +550,51 @@ export async function completePermit(permitId) {
 }
 
 /**
- * 將已完成的公文恢復為有效狀態。
+ * 將公文標記為提前失效。
+ *
+ * 適用情況：
+ * - merged            合併重新申請
+ * - authority_request 主管機關要求
+ * - cancelled         文件作廢
+ * - other             其他
+ */
+export async function invalidatePermit(
+    permitId,
+    reason
+) {
+    const allowedReasons = [
+        'merged',
+        'authority_request',
+        'cancelled',
+        'other'
+    ]
+
+    if (!allowedReasons.includes(reason)) {
+        throw new Error('無效的提前失效原因')
+    }
+
+    const { data, error } = await supabase
+        .from('permits')
+        .update({
+            status: 'invalidated',
+            reminder_paused: false,
+            completed_at: null,
+            invalidated_at: new Date().toISOString(),
+            invalidation_reason: reason
+        })
+        .eq('id', permitId)
+        .select()
+        .single()
+
+    if (error) {
+        throw error
+    }
+
+    return data
+}
+
+/**
+ * 將已完成或提前失效的公文恢復為有效狀態。
  *
  * 主要用於誤操作修正。
  */
@@ -556,7 +604,9 @@ export async function reactivatePermit(permitId) {
         .update({
             status: 'active',
             reminder_paused: false,
-            completed_at: null
+            completed_at: null,
+            invalidated_at: null,
+            invalidation_reason: null
         })
         .eq('id', permitId)
         .select()

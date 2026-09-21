@@ -9,6 +9,7 @@ import {
 
 import {
   completePermit,
+  invalidatePermit,
   pausePermitReminder,
   reactivatePermit,
   resumePermitReminder,
@@ -22,6 +23,9 @@ const isSavingApplicationNo = ref(false)
 
 const isUpdatingPermitStatus = ref(false)
 const permitStatusError = ref('')
+
+const isInvalidationFormOpen = ref(false)
+const invalidationReason = ref('merged')
 
 const props = defineProps({
   isOpen: {
@@ -273,6 +277,78 @@ async function markAsCompleted() {
   }
 }
 
+async function markAsInvalidated() {
+  const reasonLabels = {
+    merged: '合併重新申請',
+    authority_request: '主管機關要求',
+    cancelled: '文件作廢',
+    other: '其他'
+  }
+
+  const reasonLabel =
+      reasonLabels[invalidationReason.value]
+
+  const confirmed = window.confirm(
+      `確定要將這筆公文標記為「提前失效」嗎？\n\n失效原因：${reasonLabel}\n\n標記後將停止到期 Email 提醒。`
+  )
+
+  if (!confirmed) {
+    return
+  }
+
+  try {
+    isUpdatingPermitStatus.value = true
+    permitStatusError.value = ''
+
+    const updatedPermit =
+        await invalidatePermit(
+            props.permit.id,
+            invalidationReason.value
+        )
+
+    props.permit.status =
+        updatedPermit.status
+
+    props.permit.reminder_paused =
+        updatedPermit.reminder_paused
+
+    props.permit.completed_at =
+        updatedPermit.completed_at
+
+    props.permit.invalidated_at =
+        updatedPermit.invalidated_at
+
+    props.permit.invalidation_reason =
+        updatedPermit.invalidation_reason
+
+    isInvalidationFormOpen.value = false
+  } catch (error) {
+    permitStatusError.value =
+        error instanceof Error
+            ? error.message
+            : '標記提前失效失敗'
+  } finally {
+    isUpdatingPermitStatus.value = false
+  }
+}
+
+function cancelInvalidation() {
+  invalidationReason.value = 'merged'
+  permitStatusError.value = ''
+  isInvalidationFormOpen.value = false
+}
+
+function getInvalidationReasonLabel(reason) {
+  const labels = {
+    merged: '合併重新申請',
+    authority_request: '主管機關要求',
+    cancelled: '文件作廢',
+    other: '其他'
+  }
+
+  return labels[reason] ?? '未指定'
+}
+
 async function reactivate() {
   const confirmed = window.confirm(
       '確定要將這筆公文恢復為有效狀態嗎？'
@@ -299,6 +375,15 @@ async function reactivate() {
 
     props.permit.completed_at =
         updatedPermit.completed_at
+
+    props.permit.invalidated_at =
+        updatedPermit.invalidated_at
+
+    props.permit.invalidation_reason =
+        updatedPermit.invalidation_reason
+
+    isInvalidationFormOpen.value = false
+    invalidationReason.value = 'merged'
   } catch (error) {
     permitStatusError.value =
         error instanceof Error
@@ -366,6 +451,22 @@ watch(
     },
     {
       immediate: true
+    }
+)
+
+// 切換到另一筆公文時，重置只屬於上一筆公文的暫存 UI 狀態。
+watch(
+    () => props.permit?.id,
+    () => {
+      isEditingApplicationNo.value = false
+      applicationNoError.value = ''
+      isSavingApplicationNo.value = false
+
+      isInvalidationFormOpen.value = false
+      invalidationReason.value = 'merged'
+
+      isUpdatingPermitStatus.value = false
+      permitStatusError.value = ''
     }
 )
 
@@ -712,6 +813,123 @@ onBeforeUnmount(() => {
                   >
                     已提前失效
                   </span>
+
+                  <p
+                      v-if="permit.invalidation_reason"
+                      class="mt-2 text-xs text-slate-500"
+                  >
+                    失效原因：
+                    {{ getInvalidationReasonLabel(permit.invalidation_reason) }}
+                  </p>
+
+                  <p
+                      v-if="permit.invalidated_at"
+                      class="mt-1 text-xs text-slate-500"
+                  >
+                    失效時間：
+                    {{ formatDateTime(permit.invalidated_at) }}
+                  </p>
+
+                  <button
+                      type="button"
+                      :disabled="isUpdatingPermitStatus"
+                      class="mt-3 text-sm font-medium text-slate-500 underline hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                      @click="reactivate"
+                  >
+                    恢復為有效
+                  </button>
+                </div>
+              </div>
+
+              <!-- Invalidate permit -->
+              <div
+                  v-if="permit.status === 'active'"
+                  class="mt-4"
+              >
+                <button
+                    v-if="!isInvalidationFormOpen"
+                    type="button"
+                    :disabled="isUpdatingPermitStatus"
+                    class="text-sm font-medium text-slate-400 transition hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    @click="isInvalidationFormOpen = true"
+                >
+                  標記為提前失效
+                </button>
+
+                <div
+                    v-else
+                    class="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                >
+                  <div
+                      class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+                  >
+                    <div class="w-full sm:max-w-sm">
+                      <p
+                          class="text-sm font-semibold text-slate-900"
+                      >
+                        標記為提前失效
+                      </p>
+
+                      <label
+                          class="mt-3 block text-xs font-medium text-slate-500"
+                      >
+                        失效原因
+                      </label>
+
+                      <select
+                          v-model="invalidationReason"
+                          :disabled="isUpdatingPermitStatus"
+                          class="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <option value="merged">
+                          合併重新申請
+                        </option>
+
+                        <option value="authority_request">
+                          主管機關要求
+                        </option>
+
+                        <option value="cancelled">
+                          文件作廢
+                        </option>
+
+                        <option value="other">
+                          其他
+                        </option>
+                      </select>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2">
+                      <button
+                          type="button"
+                          :disabled="isUpdatingPermitStatus"
+                          class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          @click="cancelInvalidation"
+                      >
+                        取消
+                      </button>
+
+                      <button
+                          type="button"
+                          :disabled="isUpdatingPermitStatus"
+                          class="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                          @click="markAsInvalidated"
+                      >
+                        {{
+                          isUpdatingPermitStatus
+                              ? '處理中...'
+                              : '確認提前失效'
+                        }}
+                      </button>
+                    </div>
+                  </div>
+
+                  <p
+                      v-if="permitStatusError"
+                      class="mt-3 text-sm text-red-600"
+                  >
+                    {{ permitStatusError }}
+                  </p>
                 </div>
               </div>
 
