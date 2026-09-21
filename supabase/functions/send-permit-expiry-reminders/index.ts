@@ -171,57 +171,42 @@ Deno.serve(async (req: Request) => {
         REMINDER_DAYS
       )
 
-    const {
-      data: permits,
-      error: permitError
-    } = await supabase
-      .from("permits")
-      .select(`
-        id,
-        application_no,
-        certificate_no,
-        issue_date,
-        expiration_date,
-        goods_type,
-        applicant
-      `)
-      .gte(
-        "expiration_date",
-        today
-      )
-      .lte(
-        "expiration_date",
-        reminderEndDate
-      )
-      .order(
-        "expiration_date",
-        { ascending: true }
-      )
-
-    if (permitError) {
-      throw permitError
-    }
-
-    if (
-      !permits ||
-      permits.length === 0
-    ) {
-      return new Response(
-        JSON.stringify({
-          success: true,
-          message:
-            "No permits need reminders",
-          permitCount: 0
-        }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type":
-              "application/json"
-          }
-        }
-      )
-    }
+      const {
+          data: permits,
+          error: permitError
+      } = await supabase
+          .from("permits")
+          .select(`
+            id,
+            application_no,
+            certificate_no,
+            issue_date,
+            expiration_date,
+            goods_type,
+            applicant,
+            status,
+            reminder_paused
+          `)
+          .eq(
+              "status",
+              "active"
+          )
+          .eq(
+              "reminder_paused",
+              false
+          )
+          .gte(
+              "expiration_date",
+              today
+          )
+          .lte(
+              "expiration_date",
+              reminderEndDate
+          )
+          .order(
+              "expiration_date",
+              { ascending: true }
+          )
 
     const permitIds =
       permits.map(

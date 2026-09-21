@@ -353,6 +353,9 @@ export async function getPermitById(permitId) {
               expiration_date,
               goods_type,
               applicant,
+              status,
+              reminder_paused,
+              completed_at,
               created_at,
               permit_items (
                 id,
@@ -470,6 +473,96 @@ export async function updatePermitApplicationNo(
             )
         }
 
+        throw error
+    }
+
+    return data
+}
+
+/**
+ * 暫停公文到期 Email 提醒。
+ *
+ * 注意：
+ * 這不會改變公文本身的有效狀態，
+ * 只停止寄送到期提醒。
+ */
+export async function pausePermitReminder(permitId) {
+    const { data, error } = await supabase
+        .from('permits')
+        .update({
+            reminder_paused: true
+        })
+        .eq('id', permitId)
+        .select()
+        .single()
+
+    if (error) {
+        throw error
+    }
+
+    return data
+}
+
+/**
+ * 恢復公文到期 Email 提醒。
+ */
+export async function resumePermitReminder(permitId) {
+    const { data, error } = await supabase
+        .from('permits')
+        .update({
+            reminder_paused: false
+        })
+        .eq('id', permitId)
+        .select()
+        .single()
+
+    if (error) {
+        throw error
+    }
+
+    return data
+}
+
+/**
+ * 標記為已完成重新申請。
+ */
+export async function completePermit(permitId) {
+    const { data, error } = await supabase
+        .from('permits')
+        .update({
+            status: 'completed',
+            reminder_paused: false,
+            completed_at: new Date().toISOString()
+        })
+        .eq('id', permitId)
+        .select()
+        .single()
+
+    if (error) {
+        throw error
+    }
+
+    return data
+}
+
+/**
+ * 將已完成的公文恢復為有效狀態。
+ *
+ * 主要用於誤操作修正。
+ */
+export async function reactivatePermit(permitId) {
+    const { data, error } = await supabase
+        .from('permits')
+        .update({
+            status: 'active',
+            reminder_paused: false,
+            completed_at: null
+        })
+        .eq('id', permitId)
+        .select()
+        .single()
+
+    if (error) {
         throw error
     }
 

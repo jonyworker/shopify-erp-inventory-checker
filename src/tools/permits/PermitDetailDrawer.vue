@@ -8,6 +8,10 @@ import {
 } from 'vue'
 
 import {
+  completePermit,
+  pausePermitReminder,
+  reactivatePermit,
+  resumePermitReminder,
   updatePermitApplicationNo
 } from '@/utils/permits/permitRepository'
 
@@ -15,6 +19,9 @@ const isEditingApplicationNo = ref(false)
 const applicationNoInput = ref('')
 const applicationNoError = ref('')
 const isSavingApplicationNo = ref(false)
+
+const isUpdatingPermitStatus = ref(false)
+const permitStatusError = ref('')
 
 const props = defineProps({
   isOpen: {
@@ -178,9 +185,176 @@ async function saveApplicationNo() {
   }
 }
 
+async function pauseReminder() {
+  const confirmed = window.confirm(
+      '確定要暫停這筆公文的到期 Email 提醒嗎？\n\n公文仍維持有效，只是不再寄送到期提醒。'
+  )
+
+  if (!confirmed) {
+    return
+  }
+
+  try {
+    isUpdatingPermitStatus.value = true
+    permitStatusError.value = ''
+
+    const updatedPermit =
+        await pausePermitReminder(
+            props.permit.id
+        )
+
+    props.permit.reminder_paused =
+        updatedPermit.reminder_paused
+  } catch (error) {
+    permitStatusError.value =
+        error instanceof Error
+            ? error.message
+            : '暫停提醒失敗'
+  } finally {
+    isUpdatingPermitStatus.value = false
+  }
+}
+
+async function resumeReminder() {
+  try {
+    isUpdatingPermitStatus.value = true
+    permitStatusError.value = ''
+
+    const updatedPermit =
+        await resumePermitReminder(
+            props.permit.id
+        )
+
+    props.permit.reminder_paused =
+        updatedPermit.reminder_paused
+  } catch (error) {
+    permitStatusError.value =
+        error instanceof Error
+            ? error.message
+            : '恢復提醒失敗'
+  } finally {
+    isUpdatingPermitStatus.value = false
+  }
+}
+
+async function markAsCompleted() {
+  const confirmed = window.confirm(
+      '確定已完成這筆公文的重新申請嗎？\n\n完成後將停止這筆公文的到期 Email 提醒。'
+  )
+
+  if (!confirmed) {
+    return
+  }
+
+  try {
+    isUpdatingPermitStatus.value = true
+    permitStatusError.value = ''
+
+    const updatedPermit =
+        await completePermit(
+            props.permit.id
+        )
+
+    props.permit.status =
+        updatedPermit.status
+
+    props.permit.reminder_paused =
+        updatedPermit.reminder_paused
+
+    props.permit.completed_at =
+        updatedPermit.completed_at
+  } catch (error) {
+    permitStatusError.value =
+        error instanceof Error
+            ? error.message
+            : '完成申請失敗'
+  } finally {
+    isUpdatingPermitStatus.value = false
+  }
+}
+
+async function reactivate() {
+  const confirmed = window.confirm(
+      '確定要將這筆公文恢復為有效狀態嗎？'
+  )
+
+  if (!confirmed) {
+    return
+  }
+
+  try {
+    isUpdatingPermitStatus.value = true
+    permitStatusError.value = ''
+
+    const updatedPermit =
+        await reactivatePermit(
+            props.permit.id
+        )
+
+    props.permit.status =
+        updatedPermit.status
+
+    props.permit.reminder_paused =
+        updatedPermit.reminder_paused
+
+    props.permit.completed_at =
+        updatedPermit.completed_at
+  } catch (error) {
+    permitStatusError.value =
+        error instanceof Error
+            ? error.message
+            : '恢復公文失敗'
+  } finally {
+    isUpdatingPermitStatus.value = false
+  }
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return ''
+  }
+
+  return new Intl.DateTimeFormat(
+      'zh-TW',
+      {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }
+  ).format(new Date(value))
+}
+
 const permitStatus = computed(() => {
   return getPermitStatus(
       props.permit?.expiration_date
+  )
+})
+
+const daysRemaining = computed(() => {
+  const expirationDate =
+      props.permit?.expiration_date
+
+  if (!expirationDate) {
+    return null
+  }
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const expiration =
+      new Date(expirationDate)
+
+  expiration.setHours(0, 0, 0, 0)
+
+  return Math.ceil(
+      (
+          expiration.getTime() -
+          today.getTime()
+      ) /
+      (1000 * 60 * 60 * 24)
   )
 })
 
@@ -326,20 +500,20 @@ onBeforeUnmount(() => {
                         inputmode="numeric"
                         maxlength="12"
                         class="
-                          mt-2
-                          w-full
-                          rounded-lg
-                          border
-                          border-slate-300
-                          bg-white
-                          px-3
-                          py-2
-                          text-sm
-                          font-medium
-                          text-slate-950
-                          outline-none
-                          focus:border-blue-500
-                        "
+                        mt-2
+                        w-full
+                        rounded-lg
+                        border
+                        border-slate-300
+                        bg-white
+                        px-3
+                        py-2
+                        text-sm
+                        font-medium
+                        text-slate-950
+                        outline-none
+                        focus:border-blue-500
+                      "
                         placeholder="請輸入 12 碼申辦案號"
                     >
 
@@ -357,16 +531,16 @@ onBeforeUnmount(() => {
                           type="button"
                           :disabled="isSavingApplicationNo"
                           class="
-                            rounded-lg
-                            bg-slate-900
-                            px-3
-                            py-2
-                            text-xs
-                            font-medium
-                            text-white
-                            disabled:cursor-not-allowed
-                            disabled:opacity-50
-                          "
+                          rounded-lg
+                          bg-slate-900
+                          px-3
+                          py-2
+                          text-xs
+                          font-medium
+                          text-white
+                          disabled:cursor-not-allowed
+                          disabled:opacity-50
+                        "
                           @click="saveApplicationNo"
                       >
                         {{
@@ -380,15 +554,15 @@ onBeforeUnmount(() => {
                           type="button"
                           :disabled="isSavingApplicationNo"
                           class="
-                            rounded-lg
-                            border
-                            border-slate-300
-                            px-3
-                            py-2
-                            text-xs
-                            font-medium
-                            text-slate-600
-                          "
+                          rounded-lg
+                          border
+                          border-slate-300
+                          px-3
+                          py-2
+                          text-xs
+                          font-medium
+                          text-slate-600
+                        "
                           @click="cancelEditApplicationNo"
                       >
                         取消
@@ -469,43 +643,195 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
-              <!-- Status -->
+              <!-- Permit status -->
+              <div class="mt-4">
+                <template
+                    v-if="permit.status === 'active'"
+                >
+                  <span
+                      v-if="permitStatus.type === 'valid'"
+                      class="inline-flex rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700"
+                  >
+                    有效（{{ permitStatus.daysText }}）
+                  </span>
+
+                  <span
+                      v-else-if="permitStatus.type === 'expiring'"
+                      class="inline-flex rounded-full bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700"
+                  >
+                    即將到期（{{ permitStatus.daysText }}）
+                  </span>
+
+                  <span
+                      v-else-if="permitStatus.type === 'expired'"
+                      class="inline-flex rounded-full bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700"
+                  >
+                    已過期（{{ permitStatus.daysText }}）
+                  </span>
+
+                  <span
+                      v-else
+                      class="inline-flex rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600"
+                  >
+                    未知
+                  </span>
+                </template>
+
+                <div
+                    v-else-if="permit.status === 'completed'"
+                >
+                  <span
+                      class="inline-flex rounded-full bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700"
+                  >
+                    已完成重新申請
+                  </span>
+
+                  <p
+                      v-if="permit.completed_at"
+                      class="mt-2 text-xs text-slate-500"
+                  >
+                    完成時間：
+                    {{ formatDateTime(permit.completed_at) }}
+                  </p>
+
+                  <button
+                      type="button"
+                      :disabled="isUpdatingPermitStatus"
+                      class="mt-3 text-sm font-medium text-slate-500 underline hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                      @click="reactivate"
+                  >
+                    恢復為有效
+                  </button>
+                </div>
+
+                <div
+                    v-else-if="permit.status === 'invalidated'"
+                >
+                  <span
+                      class="inline-flex rounded-full bg-slate-100 px-4 py-2 text-sm font-medium text-slate-600"
+                  >
+                    已提前失效
+                  </span>
+                </div>
+              </div>
+
+              <!-- Expiry reminder actions -->
               <div
-                  class="mt-4"
+                  v-if="
+                  permit.status === 'active' &&
+                  daysRemaining !== null &&
+                  daysRemaining >= 0 &&
+                  daysRemaining <= 45
+                "
+                  class="mt-6 rounded-xl border border-slate-200 bg-white p-4"
               >
-                <span
-                    v-if="
-                      permitStatus.type === 'valid'
-                    "
-                    class="inline-flex rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700"
+                <div
+                    class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  有效（{{ permitStatus.daysText }}）
-                </span>
+                  <div>
+                    <p
+                        class="text-xs font-medium text-slate-500"
+                    >
+                      到期提醒
+                    </p>
 
-                <span
-                    v-else-if="
-                      permitStatus.type === 'expiring'
-                    "
-                    class="inline-flex rounded-full bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700"
-                >
-                  即將到期（{{ permitStatus.daysText }}）
-                </span>
+                    <div class="mt-2">
+                      <span
+                          v-if="!permit.reminder_paused"
+                          class="inline-flex rounded-full bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700"
+                      >
+                        Email 提醒中
+                      </span>
 
-                <span
-                    v-else-if="
-                      permitStatus.type === 'expired'
-                    "
-                    class="inline-flex rounded-full bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700"
-                >
-                  已過期（{{ permitStatus.daysText }}）
-                </span>
+                      <span
+                          v-else
+                          class="inline-flex rounded-full bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700"
+                      >
+                        Email 提醒已暫停
+                      </span>
+                    </div>
+                  </div>
 
-                <span
-                    v-else
-                    class="inline-flex rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600"
+                  <div class="flex flex-wrap gap-2">
+                    <button
+                        v-if="!permit.reminder_paused"
+                        type="button"
+                        :disabled="isUpdatingPermitStatus"
+                        class="
+                        rounded-lg
+                        border
+                        border-slate-300
+                        px-3
+                        py-2
+                        text-sm
+                        font-medium
+                        text-slate-600
+                        transition
+                        hover:bg-slate-50
+                        disabled:cursor-not-allowed
+                        disabled:opacity-50
+                      "
+                        @click="pauseReminder"
+                    >
+                      暫停提醒
+                    </button>
+
+                    <button
+                        v-else
+                        type="button"
+                        :disabled="isUpdatingPermitStatus"
+                        class="
+                        rounded-lg
+                        border
+                        border-slate-300
+                        px-3
+                        py-2
+                        text-sm
+                        font-medium
+                        text-slate-600
+                        transition
+                        hover:bg-slate-50
+                        disabled:cursor-not-allowed
+                        disabled:opacity-50
+                      "
+                        @click="resumeReminder"
+                    >
+                      恢復提醒
+                    </button>
+
+                    <button
+                        type="button"
+                        :disabled="isUpdatingPermitStatus"
+                        class="
+                        rounded-lg
+                        bg-slate-900
+                        px-3
+                        py-2
+                        text-sm
+                        font-medium
+                        text-white
+                        transition
+                        hover:bg-slate-800
+                        disabled:cursor-not-allowed
+                        disabled:opacity-50
+                      "
+                        @click="markAsCompleted"
+                    >
+                      {{
+                        isUpdatingPermitStatus
+                            ? '處理中...'
+                            : '完成申請'
+                      }}
+                    </button>
+                  </div>
+                </div>
+
+                <p
+                    v-if="permitStatusError"
+                    class="mt-3 text-sm text-red-600"
                 >
-                  未知
-                </span>
+                  {{ permitStatusError }}
+                </p>
               </div>
 
               <!-- Items -->
@@ -597,16 +923,18 @@ onBeforeUnmount(() => {
                       <td
                           class="whitespace-nowrap px-4 py-3 text-slate-700"
                       >
-                        <span v-if="item.tax_rate !== null">
-                          {{ item.tax_rate }}%
-                        </span>
+                          <span
+                              v-if="item.tax_rate !== null"
+                          >
+                            {{ item.tax_rate }}%
+                          </span>
 
-                                              <span
-                                                  v-else
-                                                  class="text-amber-600"
-                                              >
-                          尚未設定
-                        </span>
+                        <span
+                            v-else
+                            class="text-amber-600"
+                        >
+                            尚未設定
+                          </span>
                       </td>
 
                       <td
