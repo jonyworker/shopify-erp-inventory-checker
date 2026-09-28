@@ -25,6 +25,8 @@ import CustomsDeclarationParser from './tools/customs/CustomsDeclarationParser.v
 import PermitPdfParser from './tools/permits/PermitPdfParser.vue'
 import PermitSearch from './tools/permits/PermitSearch.vue'
 
+import ProductManager from './tools/products/ProductManager.vue'
+
 
 /* ========================================
    App State
@@ -116,6 +118,10 @@ const toolGroups = [
     description: '管理警政署槍砲彈藥簽審核准公文',
     tools: [
       {
+        label: '產品資料管理',
+        value: 'productManager'
+      },
+      {
         label: '簽審資料查詢',
         value: 'permitSearch'
       },
@@ -177,6 +183,9 @@ const currentComponent = computed(() => {
 
     case 'customsDeclarationParser':
       return CustomsDeclarationParser
+
+    case 'productManager':
+      return ProductManager
 
     case 'permitPdfParser':
       return PermitPdfParser
