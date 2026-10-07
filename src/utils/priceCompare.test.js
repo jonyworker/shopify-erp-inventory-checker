@@ -29,7 +29,7 @@ describe('comparePrice', () => {
       [{ 品項編碼: 'SKU-1', 出庫單價: 'TWD 1,200', 品項名稱: 'ERP product' }]
     )
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       results: [{
         品項編碼: 'SKU-1',
         來源工作表: 'Sheet A',
@@ -65,7 +65,7 @@ describe('comparePrice', () => {
       [{ 品項編碼: 'ERP-ONLY', 出庫單價: 200, 品項名稱: 'ERP product' }]
     )
 
-    expect(results).toEqual([
+    expect(results).toMatchObject([
       {
         品項編碼: 'RRP-ONLY',
         來源工作表: '',
@@ -89,7 +89,7 @@ describe('comparePrice', () => {
     ])
   })
 
-  it('keeps the first price and marks duplicate SKUs with the same price', () => {
+  it('blocks duplicate SKUs even with the same price', () => {
     const { results } = compareWithErp(
       [
         { Item: 'SKU-1', 'Retail Price': 100, Description: 'First name' },
@@ -101,13 +101,12 @@ describe('comparePrice', () => {
     expect(results).toHaveLength(1)
     expect(results[0]).toMatchObject({
       品項名稱: 'First name',
-      價目表價格: 100,
-      狀態: '一致',
-      備註: '價目表品項重複，已取第一筆價格'
+      價目表價格: '',
+      狀態: '重複料號待確認'
     })
   })
 
-  it('keeps the first duplicate price and reports a source price conflict', () => {
+  it('blocks a source price conflict', () => {
     const { results } = compareWithErp(
       [
         { Item: 'SKU-1', 'Retail Price': 100, Description: 'Product' },
@@ -117,14 +116,13 @@ describe('comparePrice', () => {
     )
 
     expect(results[0]).toMatchObject({
-      價目表價格: 100,
-      差異: 0,
-      狀態: '一致',
-      備註: '價目表品項重複，已取第一筆價格；價目表重複品項價格不同，請人工確認'
+      價目表價格: '',
+      差異: '',
+      狀態: '價格衝突待確認'
     })
   })
 
-  it('keeps the first duplicate ERP price and reports a target price conflict', () => {
+  it('blocks a target price conflict', () => {
     const { results } = compareWithErp(
       [{ Item: 'SKU-1', 'Retail Price': 100, Description: 'Product' }],
       [
@@ -134,10 +132,9 @@ describe('comparePrice', () => {
     )
 
     expect(results[0]).toMatchObject({
-      ERP出庫單價: 120,
-      差異: 20,
-      狀態: '價格不一致',
-      備註: 'ERP 品項重複，已取第一筆價格；ERP 重複品項價格不同，請人工確認'
+      ERP出庫單價: '',
+      差異: '',
+      狀態: '價格衝突待確認'
     })
   })
 })

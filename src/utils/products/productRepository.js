@@ -14,6 +14,13 @@ export const GUN_COMPONENT_TYPES = [
 ]
 
 
+export const GUN_DOCUMENT_ASSET_TYPES = [
+	'certification_statement',
+	'traditional_chinese_translation',
+	'energy_report'
+]
+
+
 const PRODUCT_ASSET_BUCKET =
 	'product-assets'
 
@@ -103,7 +110,7 @@ export async function updateProduct(
 
 
 // =========================================================
-// Active Status
+// Update Product Active Status
 // =========================================================
 
 export async function updateProductActiveStatus(
@@ -131,7 +138,7 @@ export async function updateProductActiveStatus(
 
 
 // =========================================================
-// Component Specs
+// Get Product Component Specs
 // =========================================================
 
 export async function getProductComponentSpecs(
@@ -153,6 +160,10 @@ export async function getProductComponentSpecs(
 }
 
 
+// =========================================================
+// Save Product Component Specs
+// =========================================================
+
 export async function saveProductComponentSpecs(
 	productId,
 	componentSpecs
@@ -165,6 +176,11 @@ export async function saveProductComponentSpecs(
 						componentType
 						]
 
+				const materialStatus =
+					spec?.materialStatus ??
+					null
+
+
 				return {
 					product_id:
 					productId,
@@ -172,8 +188,17 @@ export async function saveProductComponentSpecs(
 					component_type:
 					componentType,
 
+					material_status:
+					materialStatus,
+
 					is_metal:
-						spec?.isMetal ?? null,
+						materialStatus ===
+						'metal'
+							? true
+							: materialStatus ===
+							'non_metal'
+								? false
+								: null,
 
 					note:
 						spec?.note?.trim() ||
@@ -202,6 +227,10 @@ export async function saveProductComponentSpecs(
 }
 
 
+// =========================================================
+// Delete Product Component Specs
+// =========================================================
+
 export async function deleteProductComponentSpecs(
 	productId
 ) {
@@ -220,7 +249,7 @@ export async function deleteProductComponentSpecs(
 
 
 // =========================================================
-// Product Assets
+// Get Product Assets
 // =========================================================
 
 export async function getProductAssets(
@@ -255,26 +284,24 @@ export async function getProductAssets(
 		data ?? []
 
 
-	const assetsWithPreview =
-		await Promise.all(
-			assets.map(
-				async asset => {
-					const previewUrl =
-						await createAssetSignedUrl(
-							asset.file_path
-						)
+	return Promise.all(
+		assets.map(
+			async asset => {
+				const previewUrl =
+					await createAssetSignedUrl(
+						asset.file_path
+					)
 
-					return {
-						...asset,
-						preview_url:
-						previewUrl
-					}
+
+				return {
+					...asset,
+
+					preview_url:
+					previewUrl
 				}
-			)
+			}
 		)
-
-
-	return assetsWithPreview
+	)
 }
 
 
@@ -298,6 +325,7 @@ async function createAssetSignedUrl(
 			SIGNED_URL_EXPIRES_IN
 		)
 
+
 	if (error) {
 		console.error(
 			'建立 Signed URL 失敗',
@@ -307,7 +335,61 @@ async function createAssetSignedUrl(
 		return null
 	}
 
+
 	return data?.signedUrl ?? null
+}
+
+
+// =========================================================
+// File Extension
+// =========================================================
+
+function getFileExtension(
+	file
+) {
+	const fileName =
+		file?.name ?? ''
+
+
+	const lastDotIndex =
+		fileName.lastIndexOf('.')
+
+
+	if (
+		lastDotIndex >= 0 &&
+		lastDotIndex <
+		fileName.length - 1
+	) {
+		return fileName
+			.slice(
+				lastDotIndex + 1
+			)
+			.toLowerCase()
+	}
+
+
+	const mimeExtensions = {
+		'image/jpeg': 'jpg',
+		'image/png': 'png',
+		'image/webp': 'webp',
+
+		'application/pdf':
+			'pdf',
+
+		'application/msword':
+			'doc',
+
+		'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+			'docx'
+	}
+
+
+	return (
+		mimeExtensions[
+			file?.type
+			] ??
+		'bin'
+	)
 }
 
 
@@ -370,10 +452,15 @@ export async function uploadProductAsset(
 	assetType,
 	file
 ) {
-	const extension = 'jpg'
+	const extension =
+		getFileExtension(
+			file
+		)
+
 
 	const fileName =
 		`${crypto.randomUUID()}.${extension}`
+
 
 	const filePath =
 		`${productId}/${assetType}/${fileName}`
@@ -402,9 +489,11 @@ export async function uploadProductAsset(
 			file,
 			{
 				contentType:
-				file.type,
+					file.type ||
+					undefined,
 
-				upsert: false
+				upsert:
+					false
 			}
 		)
 
@@ -415,7 +504,7 @@ export async function uploadProductAsset(
 
 
 	// -------------------------------------------------------
-	// Database
+	// Database Insert
 	// -------------------------------------------------------
 
 	const {
@@ -434,16 +523,28 @@ export async function uploadProductAsset(
 			filePath,
 
 			sort_order:
-			sortOrder
+			sortOrder,
+
+			original_file_name:
+				file.name ||
+				null,
+
+			mime_type:
+				file.type ||
+				null,
+
+			file_size:
+				Number.isFinite(
+					file.size
+				)
+					? file.size
+					: null
 		})
 		.select()
 		.single()
 
 
 	if (error) {
-		// DB 寫入失敗時，
-		// 把剛剛 Storage 的檔案清掉。
-
 		await supabase
 			.storage
 			.from(
@@ -465,6 +566,7 @@ export async function uploadProductAsset(
 
 	return {
 		...data,
+
 		preview_url:
 		previewUrl
 	}
@@ -478,10 +580,6 @@ export async function uploadProductAsset(
 export async function deleteProductAsset(
 	asset
 ) {
-	// -------------------------------------------------------
-	// Storage
-	// -------------------------------------------------------
-
 	const {
 		error: storageError
 	} = await supabase
@@ -498,10 +596,6 @@ export async function deleteProductAsset(
 		throw storageError
 	}
 
-
-	// -------------------------------------------------------
-	// Database
-	// -------------------------------------------------------
 
 	const {
 		error: databaseError
@@ -521,40 +615,17 @@ export async function deleteProductAsset(
 
 
 // =========================================================
-// Payload Builder
+// Product Payload Builder
 // =========================================================
 
 function buildProductPayload(
 	productData
 ) {
 	return {
-		sku:
-			productData
-				.sku
-				.trim(),
-
 		name:
 			productData
 				.name
 				.trim(),
-
-		brand:
-			productData
-				.brand
-				?.trim() ||
-			null,
-
-		model:
-			productData
-				.model
-				?.trim() ||
-			null,
-
-		color:
-			productData
-				.color
-				?.trim() ||
-			null,
 
 		product_type:
 		productData

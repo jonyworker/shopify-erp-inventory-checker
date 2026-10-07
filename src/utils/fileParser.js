@@ -13,7 +13,7 @@ export function parseDataFile(file, options = {}) {
   const extension = getFileExtension(file)
 
   if (CSV_EXTENSIONS.includes(extension)) {
-    return parseCsvFile(file)
+    return parseCsvFile(file, options)
   }
 
   if (EXCEL_EXTENSIONS.includes(extension)) {
@@ -23,7 +23,7 @@ export function parseDataFile(file, options = {}) {
   return Promise.reject(new Error('不支援的檔案格式，請上傳 CSV、XLSX 或 XLS。'))
 }
 
-export function parseCsvFile(file) {
+export function parseCsvFile(file, options = {}) {
   return new Promise((resolve, reject) => {
     Papa.parse(file, {
       header: true,
@@ -35,7 +35,7 @@ export function parseCsvFile(file) {
           return
         }
 
-        resolve(result.data)
+        resolve(result.data.map((row, index) => options.includeRowNumber ? { ...row, '來源列號': index + 2 } : row))
       },
       error: error => reject(error)
     })
@@ -83,12 +83,15 @@ function rowsFromWorksheet(worksheet, sheetName, options) {
   const dataRows = rawRows.slice(headerRowIndex + 1)
 
   return dataRows
-    .filter(row => !isEmptyRow(row))
-    .map(row => {
+    .map((row, index) => {
+      if (isEmptyRow(row)) return null
       const item = {}
 
       headers.forEach((header, index) => {
-        if (!header) return
+        if (!header) {
+          if (options.includeUnheadedColumns && String(row[index] ?? '').trim()) item[`未命名欄${index + 1}`] = row[index]
+          return
+        }
         item[header] = row[index] ?? ''
       })
 
@@ -96,10 +99,11 @@ function rowsFromWorksheet(worksheet, sheetName, options) {
         item[SOURCE_SHEET_COLUMN] = sheetName
       }
 
+      if (options.includeRowNumber) item['來源列號'] = headerRowIndex + index + 2
       return item
     })
     .filter(item => {
-      return Object.values(item).some(value => String(value).trim() !== '')
+      return item && Object.values(item).some(value => String(value).trim() !== '')
     })
 }
 
