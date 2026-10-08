@@ -2,10 +2,14 @@
 import {
   computed,
   ref,
+  watch,
   onMounted
 } from 'vue'
 
-import { initializeAuth } from '@/stores/authState'
+import {
+  currentUser,
+  initializeAuth
+} from '@/stores/authState'
 
 import AppSidebar from './components/AppSidebar.vue'
 
@@ -47,7 +51,7 @@ const mobileSidebarOpen =
    Tool Groups
 ======================================== */
 
-const toolGroups = [
+const allToolGroups = [
   {
     label: '庫存工具',
     icon: 'inventory',
@@ -136,12 +140,13 @@ const toolGroups = [
 
         tools: [
           {
-            label: '申請書建立器',
-            value: 'applicationBuilder'
-          },
-          {
             label: '產品資料管理',
             value: 'productManager'
+          },
+
+          {
+            label: '申請書建立器',
+            value: 'applicationBuilder'
           }
         ]
       },
@@ -166,6 +171,45 @@ const toolGroups = [
 
   // 未來工具可以繼續加在這裡
 ]
+
+
+const protectedGroupLabels =
+    new Set([
+      '公文工具'
+    ])
+
+
+const protectedToolValues =
+    new Set([
+      'productManager',
+      'applicationBuilder',
+      'permitSearch',
+      'permitPdfParser'
+    ])
+
+
+const toolGroups =
+    computed(() => {
+      return allToolGroups.map(
+          group => {
+            if (
+                !protectedGroupLabels.has(
+                    group.label
+                )
+            ) {
+              return group
+            }
+
+
+            return {
+              ...group,
+
+              locked:
+                  !currentUser.value
+            }
+          }
+      )
+    })
 
 
 /* ========================================
@@ -193,7 +237,7 @@ function getGroupTools(
 
 const currentToolInfo =
     computed(() => {
-      return toolGroups
+      return toolGroups.value
           .flatMap(
               group =>
                   getGroupTools(
@@ -224,6 +268,16 @@ const currentToolLabel =
 
 const currentComponent =
     computed(() => {
+      if (
+          protectedToolValues.has(
+              currentTool.value
+          ) &&
+          !currentUser.value
+      ) {
+        return InventoryShopifyChecker
+      }
+
+
       switch (
           currentTool.value
           ) {
@@ -275,6 +329,22 @@ const currentComponent =
 /* ========================================
    Auth
 ======================================== */
+
+watch(
+    currentUser,
+    user => {
+      if (
+          !user &&
+          protectedToolValues.has(
+              currentTool.value
+          )
+      ) {
+        currentTool.value =
+            'inventoryShopify'
+      }
+    }
+)
+
 
 onMounted(() => {
   initializeAuth()

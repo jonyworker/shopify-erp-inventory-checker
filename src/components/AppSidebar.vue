@@ -76,6 +76,13 @@ function isGroupExpanded(
 function toggleGroup(
     group
 ) {
+  if (
+      group.locked
+  ) {
+    return
+  }
+
+
   expandedGroups.value[
       group.label
       ] =
@@ -348,6 +355,25 @@ onBeforeUnmount(() => {
               </span>
 
               <span
+                  v-if="
+                  group.locked
+                "
+                  class="
+                  rounded-full
+                  bg-amber-50
+                  px-2
+                  py-0.5
+                  text-[10px]
+                  font-bold
+                  tracking-normal
+                  text-amber-600
+                "
+              >
+                未登入
+              </span>
+
+              <span
+                  v-else
                   class="
                   text-sm
                   transition-transform
@@ -370,6 +396,7 @@ onBeforeUnmount(() => {
                 group.sections?.length
               "
                 v-show="
+                !group.locked &&
                 isGroupExpanded(
                   group
                 )
@@ -472,6 +499,7 @@ onBeforeUnmount(() => {
             <div
                 v-else
                 v-show="
+                !group.locked &&
                 isGroupExpanded(
                   group
                 )
@@ -563,7 +591,11 @@ onBeforeUnmount(() => {
                     ? 'bg-slate-900 text-white hover:bg-slate-900 hover:text-white'
                     : ''
                 "
-                  :title="group.label"
+                  :title="
+                  group.locked
+                    ? `${group.label}｜未登入`
+                    : group.label
+                "
               >
                 <ToolGroupIcon :type="group.icon" />
               </button>
@@ -587,18 +619,65 @@ onBeforeUnmount(() => {
                   group-hover:opacity-100
                 "
               >
-                <p
+                <div
                     class="
-                    px-3 pb-2 pt-1
-                    text-xs font-bold
-                    text-slate-400
+                    flex
+                    items-center
+                    gap-2
+                    px-3
+                    pb-2
+                    pt-1
                   "
                 >
-                  {{ group.label }}
-                </p>
+                  <p
+                      class="
+                      min-w-0
+                      flex-1
+                      text-xs
+                      font-bold
+                      text-slate-400
+                    "
+                  >
+                    {{ group.label }}
+                  </p>
+
+                  <span
+                      v-if="
+                      group.locked
+                    "
+                      class="
+                      rounded-full
+                      bg-amber-50
+                      px-2
+                      py-0.5
+                      text-[10px]
+                      font-bold
+                      text-amber-600
+                    "
+                  >
+                    未登入
+                  </span>
+                </div>
+
+                <div
+                    v-if="
+                    group.locked
+                  "
+                    class="
+                    rounded-lg
+                    bg-slate-50
+                    px-3
+                    py-3
+                    text-xs
+                    leading-5
+                    text-slate-500
+                  "
+                >
+                  登入後即可使用公文工具。
+                </div>
 
                 <template
-                    v-if="
+                    v-else-if="
                     group.sections?.length
                   "
                 >
@@ -880,6 +959,25 @@ onBeforeUnmount(() => {
                   </span>
 
                   <span
+                      v-if="
+                      group.locked
+                    "
+                      class="
+                      rounded-full
+                      bg-amber-50
+                      px-2
+                      py-0.5
+                      text-[10px]
+                      font-bold
+                      tracking-normal
+                      text-amber-600
+                    "
+                  >
+                    未登入
+                  </span>
+
+                  <span
+                      v-else
                       class="
                       text-sm
                       transition-transform
@@ -902,6 +1000,7 @@ onBeforeUnmount(() => {
                     group.sections?.length
                   "
                     v-show="
+                    !group.locked &&
                     isGroupExpanded(
                       group
                     )
@@ -1004,6 +1103,7 @@ onBeforeUnmount(() => {
                 <div
                     v-else
                     v-show="
+                    !group.locked &&
                     isGroupExpanded(
                       group
                     )
