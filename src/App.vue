@@ -26,17 +26,21 @@ import PermitPdfParser from './tools/permits/PermitPdfParser.vue'
 import PermitSearch from './tools/permits/PermitSearch.vue'
 
 import ProductManager from './tools/products/ProductManager.vue'
+import ApplicationBuilder from './tools/products/ApplicationBuilder.vue'
 
 
 /* ========================================
    App State
 ======================================== */
 
-const currentTool = ref('inventoryShopify')
+const currentTool =
+    ref('inventoryShopify')
 
-const sidebarCollapsed = ref(false)
+const sidebarCollapsed =
+    ref(false)
 
-const mobileSidebarOpen = ref(false)
+const mobileSidebarOpen =
+    ref(false)
 
 
 /* ========================================
@@ -48,11 +52,13 @@ const toolGroups = [
     label: '庫存工具',
     icon: 'inventory',
     description: '比對 ERP 與通路庫存資料',
+
     tools: [
       {
         label: 'ERP / Shopify 庫存比對',
         value: 'inventoryShopify'
       },
+
       {
         label: 'ERP / Ruten 庫存比對',
         value: 'inventoryRuten'
@@ -64,15 +70,18 @@ const toolGroups = [
     label: '價格工具',
     icon: 'price',
     description: '比對 RRP、ERP 與通路價格資料',
+
     tools: [
       {
         label: 'RRP / ERP 價格比對',
         value: 'priceErp'
       },
+
       {
         label: 'RRP / Shopify 價格比對',
         value: 'priceShopify'
       },
+
       {
         label: 'RRP / Ruten 價格比對',
         value: 'priceRuten'
@@ -84,15 +93,18 @@ const toolGroups = [
     label: 'Shopify 工具',
     icon: 'shopify',
     description: '活動商品上架與下架管理',
+
     tools: [
       {
         label: 'Promotion 價格產生器',
         value: 'promotionPriceBuilder'
       },
+
       {
         label: 'Promotion 商品上架',
         value: 'shopifyPromotionLaunch'
       },
+
       {
         label: 'Promotion 商品下架',
         value: 'shopifyPromotionEnd'
@@ -104,6 +116,7 @@ const toolGroups = [
     label: '報關工具',
     icon: 'customs',
     description: '整理進出口報單與 Invoice 紀錄',
+
     tools: [
       {
         label: '進出口報單整理',
@@ -115,19 +128,38 @@ const toolGroups = [
   {
     label: '公文工具',
     icon: 'permit',
-    description: '管理警政署槍砲彈藥簽審核准公文',
-    tools: [
+    description: '建立產品申請文件與管理簽審公文',
+
+    sections: [
       {
-        label: '產品資料管理',
-        value: 'productManager'
+        label: '產品申請',
+
+        tools: [
+          {
+            label: '申請書建立器',
+            value: 'applicationBuilder'
+          },
+          {
+            label: '產品資料管理',
+            value: 'productManager'
+          }
+        ]
       },
+
       {
-        label: '簽審資料查詢',
-        value: 'permitSearch'
-      },
-      {
-        label: '簽審公文匯入',
-        value: 'permitPdfParser'
+        label: '簽審管理',
+
+        tools: [
+          {
+            label: '簽審資料查詢',
+            value: 'permitSearch'
+          },
+
+          {
+            label: '簽審公文匯入',
+            value: 'permitPdfParser'
+          }
+        ]
       }
     ]
   }
@@ -140,63 +172,104 @@ const toolGroups = [
    Current Tool
 ======================================== */
 
-const currentToolInfo = computed(() => {
-  return toolGroups
-      .flatMap(group => group.tools)
-      .find(tool => tool.value === currentTool.value)
-})
+function getGroupTools(
+    group
+) {
+  if (
+      Array.isArray(
+          group.sections
+      )
+  ) {
+    return group.sections.flatMap(
+        section =>
+            section.tools ?? []
+    )
+  }
 
-const currentToolLabel = computed(() => {
-  return currentToolInfo.value?.label ?? 'PTS Internal Tools'
-})
+
+  return group.tools ?? []
+}
+
+
+const currentToolInfo =
+    computed(() => {
+      return toolGroups
+          .flatMap(
+              group =>
+                  getGroupTools(
+                      group
+                  )
+          )
+          .find(
+              tool =>
+                  tool.value ===
+                  currentTool.value
+          )
+    })
+
+
+const currentToolLabel =
+    computed(() => {
+      return (
+          currentToolInfo.value
+              ?.label ??
+          'PTS Internal Tools'
+      )
+    })
 
 
 /* ========================================
    Current Component
 ======================================== */
 
-const currentComponent = computed(() => {
-  switch (currentTool.value) {
-    case 'inventoryShopify':
-      return InventoryShopifyChecker
+const currentComponent =
+    computed(() => {
+      switch (
+          currentTool.value
+          ) {
+        case 'inventoryShopify':
+          return InventoryShopifyChecker
 
-    case 'inventoryRuten':
-      return InventoryRutenChecker
+        case 'inventoryRuten':
+          return InventoryRutenChecker
 
-    case 'priceErp':
-      return PriceErpChecker
+        case 'priceErp':
+          return PriceErpChecker
 
-    case 'priceShopify':
-      return PriceShopifyChecker
+        case 'priceShopify':
+          return PriceShopifyChecker
 
-    case 'priceRuten':
-      return PriceRutenChecker
+        case 'priceRuten':
+          return PriceRutenChecker
 
-    case 'promotionPriceBuilder':
-      return PromotionPriceBuilderTool
+        case 'promotionPriceBuilder':
+          return PromotionPriceBuilderTool
 
-    case 'shopifyPromotionLaunch':
-      return ShopifyPromotionLaunchTool
+        case 'shopifyPromotionLaunch':
+          return ShopifyPromotionLaunchTool
 
-    case 'shopifyPromotionEnd':
-      return ShopifyPromotionEndTool
+        case 'shopifyPromotionEnd':
+          return ShopifyPromotionEndTool
 
-    case 'customsDeclarationParser':
-      return CustomsDeclarationParser
+        case 'customsDeclarationParser':
+          return CustomsDeclarationParser
 
-    case 'productManager':
-      return ProductManager
+        case 'productManager':
+          return ProductManager
 
-    case 'permitPdfParser':
-      return PermitPdfParser
+        case 'applicationBuilder':
+          return ApplicationBuilder
 
-    case 'permitSearch':
-      return PermitSearch
+        case 'permitPdfParser':
+          return PermitPdfParser
 
-    default:
-      return InventoryShopifyChecker
-  }
-})
+        case 'permitSearch':
+          return PermitSearch
+
+        default:
+          return InventoryShopifyChecker
+      }
+    })
 
 
 /* ========================================
@@ -210,8 +283,12 @@ onMounted(() => {
 
 
 <template>
-  <div class="min-h-screen bg-slate-50">
-
+  <div
+      class="
+      min-h-screen
+      bg-slate-50
+    "
+  >
     <!-- ========================================
          Sidebar
     ========================================= -->
@@ -220,7 +297,10 @@ onMounted(() => {
         v-model="currentTool"
         v-model:mobile-open="mobileSidebarOpen"
         :groups="toolGroups"
-        @update:collapsed="sidebarCollapsed = $event"
+        @update:collapsed="
+        sidebarCollapsed =
+          $event
+      "
     />
 
 
@@ -240,7 +320,6 @@ onMounted(() => {
           : 'lg:pl-72'
       "
     >
-
       <!-- ========================================
            Mobile Header
       ========================================= -->
@@ -262,6 +341,7 @@ onMounted(() => {
         "
       >
         <!-- Hamburger -->
+
         <button
             type="button"
             class="
@@ -279,26 +359,42 @@ onMounted(() => {
             hover:text-slate-950
           "
             aria-label="開啟選單"
-            @click="mobileSidebarOpen = true"
+            @click="
+            mobileSidebarOpen =
+              true
+          "
         >
           <svg
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              class="h-5 w-5"
+              class="
+              h-5
+              w-5
+            "
           >
             <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
                 stroke-width="1.8"
-                d="M4 6h16M4 12h16M4 18h16"
+                d="
+                M4 6h16
+                M4 12h16
+                M4 18h16
+              "
             />
           </svg>
         </button>
 
 
         <!-- Current Tool -->
-        <div class="ml-3 min-w-0">
+
+        <div
+            class="
+            ml-3
+            min-w-0
+          "
+        >
           <p
               class="
               text-[9px]
@@ -340,10 +436,13 @@ onMounted(() => {
           md:py-8
         "
       >
-
         <!-- Current Tool Component -->
-        <component :is="currentComponent" />
 
+        <component
+            :is="
+            currentComponent
+          "
+        />
       </div>
     </main>
   </div>

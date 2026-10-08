@@ -25,6 +25,8 @@ import {
   getImageCompressionOptions
 } from '@/utils/products/productImageUtils'
 
+import { supabase } from '@/lib/supabaseClient'
+
 
 // =========================================================
 // Helpers
@@ -106,30 +108,57 @@ const gunDocumentDefinitions = [
   {
     type: 'certification_statement',
     label: '認證標章說明文件',
-    description: '上傳申請使用的認證標章說明文件'
+    description: '上傳認證標章說明文件的頁面圖片'
   },
 
   {
     type: 'traditional_chinese_translation',
     label: '中文正體字譯本',
-    description: '上傳原廠文件所對應的中文正體字譯本'
+    description: '上傳中文正體字譯本的頁面圖片'
   },
 
   {
     type: 'energy_report',
     label: '動能輸出檢測報告',
-    description: '上傳本產品的動能輸出檢測報告'
+    description: '上傳動能輸出檢測報告的頁面圖片'
   }
 ]
 
 
-const DOCUMENT_MIME_TYPES = [
-  'application/pdf',
+const partCategoryOptions = [
+  {
+    value: 'body',
+    label: '槍身'
+  },
 
-  'application/msword',
+  {
+    value: 'slide',
+    label: '滑套'
+  },
 
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  {
+    value: 'barrel',
+    label: '槍管'
+  },
 
+  {
+    value: 'magazine',
+    label: '彈匣'
+  },
+
+  {
+    value: 'bolt',
+    label: '槍機'
+  },
+
+  {
+    value: 'other',
+    label: '其他'
+  }
+]
+
+
+const DOCUMENT_IMAGE_MIME_TYPES = [
   'image/jpeg',
   'image/png'
 ]
@@ -164,6 +193,20 @@ const editingProductId =
 
 const productAssets =
     ref([])
+
+
+// 新增產品時，圖片會先暫存在前端。
+// 等使用者按下「建立產品」取得 product_id 後，
+// 系統再一次上傳到 Supabase。
+const pendingAssets =
+    ref([])
+
+
+// 用來判斷編輯模式下，文字／選項內容是否真的有變更。
+// 圖片在編輯模式會立即上傳，因此不納入一般 dirty tracking。
+// 若有圖片上傳失敗而留在 pendingAssets，儲存按鈕仍會允許重試。
+const initialFormSnapshot =
+    ref('')
 
 
 // ---------------------------------------------------------
@@ -203,6 +246,10 @@ const deletingAssetId =
     ref(null)
 
 
+const movingAssetId =
+    ref(null)
+
+
 // ---------------------------------------------------------
 // Filters
 // ---------------------------------------------------------
@@ -211,6 +258,9 @@ const searchKeyword =
     ref('')
 
 const typeFilter =
+    ref('all')
+
+const partCategoryFilter =
     ref('all')
 
 const statusFilter =
@@ -267,6 +317,60 @@ const isGun =
     })
 
 
+function createFormSnapshot() {
+  return JSON.stringify(
+      form.value
+  )
+}
+
+
+const hasFormChanges =
+    computed(() => {
+      if (
+          !isEditing.value
+      ) {
+        return true
+      }
+
+
+      if (
+          !initialFormSnapshot.value
+      ) {
+        return false
+      }
+
+
+      return (
+          createFormSnapshot() !==
+          initialFormSnapshot.value
+      )
+    })
+
+
+const canSubmitProduct =
+    computed(() => {
+      if (
+          isSaving.value ||
+          isLoadingEditData.value
+      ) {
+        return false
+      }
+
+
+      if (
+          !isEditing.value
+      ) {
+        return true
+      }
+
+
+      return (
+          hasFormChanges.value ||
+          pendingAssets.value.length > 0
+      )
+    })
+
+
 const modalTitle =
     computed(() => {
       if (isEditing.value) {
@@ -309,6 +413,17 @@ const filteredProducts =
                 typeFilter.value
 
 
+            const matchesPartCategory =
+                partCategoryFilter.value ===
+                'all' ||
+                (
+                    product.product_type ===
+                    'part' &&
+                    product.part_category ===
+                    partCategoryFilter.value
+                )
+
+
             const matchesStatus =
                 statusFilter.value ===
                 'all' ||
@@ -327,6 +442,7 @@ const filteredProducts =
             return (
                 matchesSearch &&
                 matchesType &&
+                matchesPartCategory &&
                 matchesStatus
             )
           }
@@ -341,7 +457,10 @@ const filteredProducts =
 function getAssetsByType(
     assetType
 ) {
-  return productAssets.value
+  return [
+    ...productAssets.value,
+    ...pendingAssets.value
+  ]
       .filter(
           asset =>
               asset.asset_type ===
@@ -358,13 +477,151 @@ function getAssetsByType(
 function hasAssetType(
     assetType
 ) {
-  return productAssets.value.some(
-      asset =>
-          asset.asset_type ===
+  return (
+      getAssetsByType(
           assetType
+      ).length > 0
   )
 }
 
+
+function revokePendingAssetPreview(
+    asset
+) {
+  if (
+      asset?.is_pending &&
+      asset.preview_url
+  ) {
+    URL.revokeObjectURL(
+        asset.preview_url
+    )
+  }
+}
+
+
+function clearPendingAssets() {
+  for (
+      const asset
+      of pendingAssets.value
+      ) {
+    revokePendingAssetPreview(
+        asset
+    )
+  }
+
+
+  pendingAssets.value = []
+}
+
+
+function removePendingAsset(
+    assetId
+) {
+  const asset =
+      pendingAssets.value.find(
+          item =>
+              item.id ===
+              assetId
+      )
+
+
+  if (asset) {
+    revokePendingAssetPreview(
+        asset
+    )
+  }
+
+
+  pendingAssets.value =
+      pendingAssets.value.filter(
+          item =>
+              item.id !==
+              assetId
+      )
+}
+
+
+function createPendingAsset(
+    assetType,
+    file
+) {
+  const sameTypeAssets =
+      pendingAssets.value.filter(
+          asset =>
+              asset.asset_type ===
+              assetType
+      )
+
+
+  return {
+    id:
+        `pending-${crypto.randomUUID()}`,
+
+    asset_type:
+    assetType,
+
+    file,
+
+    original_file_name:
+    file.name,
+
+    mime_type:
+    file.type,
+
+    file_size:
+    file.size,
+
+    sort_order:
+    sameTypeAssets.length,
+
+    preview_url:
+        URL.createObjectURL(
+            file
+        ),
+
+    is_pending:
+        true
+  }
+}
+
+
+function addPendingAsset(
+    assetType,
+    file
+) {
+  pendingAssets.value.push(
+      createPendingAsset(
+          assetType,
+          file
+      )
+  )
+}
+
+
+async function uploadPendingAssets(
+    productId
+) {
+  const assetsToUpload = [
+    ...pendingAssets.value
+  ]
+
+
+  for (
+      const asset
+      of assetsToUpload
+      ) {
+    await uploadProductAsset(
+        productId,
+        asset.asset_type,
+        asset.file
+    )
+
+
+    removePendingAsset(
+        asset.id
+    )
+  }
+}
 
 function isComponentNotApplicable(
     componentType
@@ -460,6 +717,37 @@ function getAssetFileName(
           ?.split('/')
           .pop() ||
       '未命名文件'
+  )
+}
+
+
+function isImageAsset(
+    asset
+) {
+  const mimeType =
+      String(
+          asset.mime_type ?? ''
+      )
+          .toLowerCase()
+
+  if (
+      mimeType === 'image/jpeg' ||
+      mimeType === 'image/png'
+  ) {
+    return true
+  }
+
+
+  const filePath =
+      String(
+          asset.file_path ?? ''
+      )
+          .toLowerCase()
+
+  return (
+      filePath.endsWith('.jpg') ||
+      filePath.endsWith('.jpeg') ||
+      filePath.endsWith('.png')
   )
 }
 
@@ -741,6 +1029,9 @@ async function loadAssets(
 // =========================================================
 
 function resetForm() {
+  clearPendingAssets()
+
+
   form.value = {
     name: '',
 
@@ -759,6 +1050,12 @@ function resetForm() {
       null
 
   productAssets.value = []
+
+  initialFormSnapshot.value =
+      ''
+
+  movingAssetId.value =
+      null
 
 
   errorMessage.value = ''
@@ -855,7 +1152,6 @@ async function handleAssetFiles(
 
 
   if (
-      !editingProductId.value ||
       files.length === 0
   ) {
     return
@@ -897,40 +1193,57 @@ async function handleAssetFiles(
       }
 
 
-      await uploadProductAsset(
-          editingProductId.value,
-          assetType,
-          compressedFile
-      )
+      if (
+          isEditing.value
+      ) {
+        await uploadProductAsset(
+            editingProductId.value,
+            assetType,
+            compressedFile
+        )
+      } else {
+        addPendingAsset(
+            assetType,
+            compressedFile
+        )
+      }
     }
 
 
-    await loadAssets(
-        editingProductId.value
-    )
+    if (
+        isEditing.value
+    ) {
+      await loadAssets(
+          editingProductId.value
+      )
 
 
-    assetSuccessMessage.value =
-        files.length > 1
-            ? `成功上傳 ${files.length} 張圖片`
-            : '圖片上傳成功'
+      assetSuccessMessage.value =
+          files.length > 1
+              ? `成功上傳 ${files.length} 張圖片`
+              : '圖片上傳成功'
+    } else {
+      assetSuccessMessage.value =
+          files.length > 1
+              ? `已加入 ${files.length} 張圖片，建立產品時會一併上傳`
+              : '圖片已加入，建立產品時會一併上傳'
+    }
   } catch (error) {
     console.error(error)
 
     assetErrorMessage.value =
-        `圖片上傳失敗：${error.message}`
+        `圖片處理失敗：${error.message}`
   } finally {
     uploadingAssetType.value =
         null
   }
 }
 
-
 // =========================================================
 // Document Upload
 // =========================================================
 
-async function handleDocumentFiles(
+async function handleDocumentImageFiles(
     assetType,
     event
 ) {
@@ -948,7 +1261,6 @@ async function handleDocumentFiles(
 
 
   if (
-      !editingProductId.value ||
       files.length === 0
   ) {
     return
@@ -968,32 +1280,291 @@ async function handleDocumentFiles(
         of files
         ) {
       if (
-          !DOCUMENT_MIME_TYPES.includes(
+          !DOCUMENT_IMAGE_MIME_TYPES.includes(
               file.type
           )
       ) {
         throw new Error(
-            `${file.name} 的檔案格式不支援`
+            `${file.name} 不是 JPG 或 PNG 圖片`
+        )
+      }
+
+
+      const options =
+          getImageCompressionOptions(
+              'exploded_diagram'
+          )
+
+
+      const compressedFile =
+          await compressProductImage(
+              file,
+              options
+          )
+
+
+      if (
+          compressedFile.size >
+          5 * 1024 * 1024
+      ) {
+        throw new Error(
+            `${file.name} 壓縮後仍超過 5 MB`
         )
       }
 
 
       if (
-          file.size >
-          10 * 1024 * 1024
+          isEditing.value
       ) {
-        throw new Error(
-            `${file.name} 超過 10 MB`
+        await uploadProductAsset(
+            editingProductId.value,
+            assetType,
+            compressedFile
+        )
+      } else {
+        addPendingAsset(
+            assetType,
+            compressedFile
         )
       }
-
-
-      await uploadProductAsset(
-          editingProductId.value,
-          assetType,
-          file
-      )
     }
+
+
+    if (
+        isEditing.value
+    ) {
+      await loadAssets(
+          editingProductId.value
+      )
+
+
+      assetSuccessMessage.value =
+          files.length > 1
+              ? `成功上傳 ${files.length} 張申請文件圖片`
+              : '申請文件圖片上傳成功'
+    } else {
+      assetSuccessMessage.value =
+          files.length > 1
+              ? `已加入 ${files.length} 張申請文件圖片，建立產品時會一併上傳`
+              : '申請文件圖片已加入，建立產品時會一併上傳'
+    }
+  } catch (error) {
+    console.error(error)
+
+    assetErrorMessage.value =
+        `申請文件圖片處理失敗：${error.message}`
+  } finally {
+    uploadingAssetType.value =
+        null
+  }
+}
+
+// =========================================================
+// Asset Order
+// =========================================================
+
+async function saveAssetSortOrders(
+    assets
+) {
+  for (
+      let index = 0;
+      index < assets.length;
+      index++
+  ) {
+    const asset =
+        assets[index]
+
+
+    const {
+      error
+    } = await supabase
+        .from(
+            'product_assets'
+        )
+        .update({
+          sort_order:
+          index
+        })
+        .eq(
+            'id',
+            asset.id
+        )
+
+
+    if (error) {
+      throw error
+    }
+  }
+}
+
+
+async function moveAsset(
+    assetType,
+    assetId,
+    direction
+) {
+  if (
+      movingAssetId.value
+  ) {
+    return
+  }
+
+
+  const assets =
+      getAssetsByType(
+          assetType
+      )
+
+
+  const currentIndex =
+      assets.findIndex(
+          asset =>
+              asset.id ===
+              assetId
+      )
+
+
+  const targetIndex =
+      currentIndex +
+      direction
+
+
+  if (
+      currentIndex === -1 ||
+      targetIndex < 0 ||
+      targetIndex >=
+      assets.length
+  ) {
+    return
+  }
+
+
+  // 新增產品尚未寫入資料庫時，只需要調整前端暫存順序。
+  if (
+      assets[currentIndex]
+          ?.is_pending
+  ) {
+    const pendingOfType =
+        pendingAssets.value
+            .filter(
+                asset =>
+                    asset.asset_type ===
+                    assetType
+            )
+            .sort(
+                (a, b) =>
+                    a.sort_order -
+                    b.sort_order
+            )
+
+
+    const pendingCurrentIndex =
+        pendingOfType.findIndex(
+            asset =>
+                asset.id ===
+                assetId
+        )
+
+
+    const pendingTargetIndex =
+        pendingCurrentIndex +
+        direction
+
+
+    if (
+        pendingCurrentIndex === -1 ||
+        pendingTargetIndex < 0 ||
+        pendingTargetIndex >=
+        pendingOfType.length
+    ) {
+      return
+    }
+
+
+    const reordered = [
+      ...pendingOfType
+    ]
+
+
+    const [
+      movedAsset
+    ] = reordered.splice(
+        pendingCurrentIndex,
+        1
+    )
+
+
+    reordered.splice(
+        pendingTargetIndex,
+        0,
+        movedAsset
+    )
+
+
+    reordered.forEach(
+        (
+            asset,
+            index
+        ) => {
+          asset.sort_order =
+              index
+        }
+    )
+
+
+    pendingAssets.value = [
+      ...pendingAssets.value.filter(
+          asset =>
+              asset.asset_type !==
+              assetType
+      ),
+
+      ...reordered
+    ]
+
+
+    return
+  }
+
+
+  if (
+      !editingProductId.value
+  ) {
+    return
+  }
+
+
+  const reorderedAssets = [
+    ...assets
+  ]
+
+
+  const [
+    movedAsset
+  ] = reorderedAssets.splice(
+      currentIndex,
+      1
+  )
+
+
+  reorderedAssets.splice(
+      targetIndex,
+      0,
+      movedAsset
+  )
+
+
+  assetErrorMessage.value = ''
+  assetSuccessMessage.value = ''
+
+  movingAssetId.value =
+      assetId
+
+
+  try {
+    await saveAssetSortOrders(
+        reorderedAssets
+    )
 
 
     await loadAssets(
@@ -1002,18 +1573,36 @@ async function handleDocumentFiles(
 
 
     assetSuccessMessage.value =
-        files.length > 1
-            ? `成功上傳 ${files.length} 份文件`
-            : '文件上傳成功'
+        '圖片順序已更新'
   } catch (error) {
     console.error(error)
 
     assetErrorMessage.value =
-        `文件上傳失敗：${error.message}`
+        `調整圖片順序失敗：${error.message}`
   } finally {
-    uploadingAssetType.value =
+    movingAssetId.value =
         null
   }
+}
+
+async function normalizeAssetSortOrders(
+    assetType,
+    excludedAssetId = null
+) {
+  const assets =
+      getAssetsByType(
+          assetType
+      )
+          .filter(
+              asset =>
+                  asset.id !==
+                  excludedAssetId
+          )
+
+
+  await saveAssetSortOrders(
+      assets
+  )
 }
 
 
@@ -1026,7 +1615,9 @@ async function handleDeleteAsset(
 ) {
   const confirmed =
       window.confirm(
-          '確定要刪除這個檔案嗎？'
+          asset.is_pending
+              ? '確定要移除這張尚未上傳的圖片嗎？'
+              : '確定要刪除這個檔案嗎？'
       )
 
 
@@ -1039,6 +1630,46 @@ async function handleDeleteAsset(
   assetSuccessMessage.value = ''
 
 
+  if (
+      asset.is_pending
+  ) {
+    removePendingAsset(
+        asset.id
+    )
+
+
+    const sameTypeAssets =
+        pendingAssets.value
+            .filter(
+                item =>
+                    item.asset_type ===
+                    asset.asset_type
+            )
+            .sort(
+                (a, b) =>
+                    a.sort_order -
+                    b.sort_order
+            )
+
+
+    sameTypeAssets.forEach(
+        (
+            item,
+            index
+        ) => {
+          item.sort_order =
+              index
+        }
+    )
+
+
+    assetSuccessMessage.value =
+        '已移除圖片'
+
+    return
+  }
+
+
   try {
     deletingAssetId.value =
         asset.id
@@ -1046,6 +1677,12 @@ async function handleDeleteAsset(
 
     await deleteProductAsset(
         asset
+    )
+
+
+    await normalizeAssetSortOrders(
+        asset.asset_type,
+        asset.id
     )
 
 
@@ -1067,7 +1704,6 @@ async function handleDeleteAsset(
   }
 }
 
-
 // =========================================================
 // Labels
 // =========================================================
@@ -1086,6 +1722,62 @@ function getProductTypeLabel(
   return type ?? '-'
 }
 
+
+function getPartCategoryLabel(
+    product
+) {
+  if (
+      product.product_type !==
+      'part'
+  ) {
+    return '-'
+  }
+
+
+  if (
+      product.part_category ===
+      'other'
+  ) {
+    const otherText =
+        String(
+            product.part_category_other ?? ''
+        )
+            .trim()
+
+
+    return otherText
+        ? `其他｜${otherText}`
+        : '其他'
+  }
+
+
+  const option =
+      partCategoryOptions.find(
+          item =>
+              item.value ===
+              product.part_category
+      )
+
+
+  return option?.label ?? '-'
+}
+
+
+function getProductTypeBadgeClass(
+    type
+) {
+  if (type === 'gun') {
+    return 'bg-blue-100 text-blue-700'
+  }
+
+
+  if (type === 'part') {
+    return 'bg-amber-100 text-amber-700'
+  }
+
+
+  return 'bg-slate-100 text-slate-700'
+}
 
 function formatDate(
     value
@@ -1146,25 +1838,12 @@ function validateForm() {
   }
 
 
-  if (isGun.value) {
-    for (
-        const component
-        of gunComponentDefinitions
-        ) {
-      const spec =
-          form.value
-              .gunComponents[
-              component.type
-              ]
-
-
-      if (
-          !spec.materialStatus
-      ) {
-        return `請選擇「${component.label}」的材質狀態`
-      }
-    }
-  }
+  // 全槍允許先建立基本資料，再逐步補齊各部位材質、
+  // 照片與申請附件。完整度由下方「申請資料完整度」追蹤，
+  // 不阻擋產品先建立。
+  //
+  // 零件則因 products 資料表本身需要零件種類與金屬材質，
+  // 仍保留上方的必要欄位驗證。
 
 
   return ''
@@ -1265,6 +1944,10 @@ async function openEditModal(
     await loadAssets(
         product.id
     )
+
+
+    initialFormSnapshot.value =
+        createFormSnapshot()
   } catch (error) {
     console.error(error)
 
@@ -1284,6 +1967,8 @@ async function openEditModal(
 async function handleSubmit() {
   errorMessage.value = ''
   successMessage.value = ''
+  assetErrorMessage.value = ''
+  assetSuccessMessage.value = ''
 
 
   const validationError =
@@ -1298,13 +1983,17 @@ async function handleSubmit() {
   }
 
 
+  const wasEditing =
+      isEditing.value
+
+
   try {
     isSaving.value = true
 
     let savedProduct
 
 
-    if (isEditing.value) {
+    if (wasEditing) {
       savedProduct =
           await updateProduct(
               editingProductId.value,
@@ -1324,6 +2013,21 @@ async function handleSubmit() {
       }
 
 
+      // 若先前建立產品時有圖片上傳失敗，
+      // 使用者再次儲存時會自動重試尚未完成的圖片。
+      if (
+          pendingAssets.value.length
+      ) {
+        await uploadPendingAssets(
+            savedProduct.id
+        )
+      }
+
+
+      initialFormSnapshot.value =
+          createFormSnapshot()
+
+
       successMessage.value =
           '產品修改成功'
     } else {
@@ -1331,6 +2035,10 @@ async function handleSubmit() {
           await createProduct(
               form.value
           )
+
+
+      editingProductId.value =
+          savedProduct.id
 
 
       if (isGun.value) {
@@ -1341,12 +2049,21 @@ async function handleSubmit() {
       }
 
 
-      editingProductId.value =
-          savedProduct.id
+      if (
+          pendingAssets.value.length
+      ) {
+        await uploadPendingAssets(
+            savedProduct.id
+        )
+      }
+
+
+      initialFormSnapshot.value =
+          createFormSnapshot()
 
 
       successMessage.value =
-          '產品建立成功，現在可以繼續上傳照片與附件'
+          '產品建立成功，文字資料與圖片皆已儲存'
     }
 
 
@@ -1363,14 +2080,37 @@ async function handleSubmit() {
   } catch (error) {
     console.error(error)
 
-    errorMessage.value =
-        `儲存產品失敗：${error.message}`
+
+    if (
+        !wasEditing &&
+        editingProductId.value
+    ) {
+      errorMessage.value =
+          `產品已建立，但部分圖片尚未完成上傳：${error.message}`
+
+      assetErrorMessage.value =
+          '尚未完成的圖片會保留在畫面中，可再次按「儲存修改」重試。'
+    } else {
+      errorMessage.value =
+          `儲存產品失敗：${error.message}`
+    }
+
+
+    await loadProducts()
+
+
+    if (
+        editingProductId.value
+    ) {
+      await loadAssets(
+          editingProductId.value
+      )
+    }
   } finally {
     isSaving.value =
         false
   }
 }
-
 
 // =========================================================
 // Active Status
@@ -1485,7 +2225,7 @@ onMounted(() => {
             text-slate-500
           "
         >
-          管理申請書所需的產品資料、照片與附件。
+          管理申請書所需的產品資料、照片與附件圖片。
         </p>
       </div>
 
@@ -1535,7 +2275,7 @@ onMounted(() => {
           class="
           grid
           gap-3
-          lg:grid-cols-[1fr_180px_180px]
+          lg:grid-cols-[1fr_180px_180px_180px]
         "
       >
         <div>
@@ -1592,6 +2332,41 @@ onMounted(() => {
 
           <option value="gun">
             全槍
+          </option>
+        </select>
+
+
+        <select
+            v-model="
+            partCategoryFilter
+          "
+            class="
+            rounded-lg
+            border
+            border-slate-300
+            bg-white
+            px-3
+            py-2.5
+            text-sm
+          "
+        >
+          <option value="all">
+            全部零件種類
+          </option>
+
+          <option
+              v-for="
+              option
+              in partCategoryOptions
+            "
+              :key="
+              option.value
+            "
+              :value="
+              option.value
+            "
+          >
+            {{ option.label }}
           </option>
         </select>
 
@@ -1833,6 +2608,17 @@ onMounted(() => {
                   font-semibold
                 "
             >
+              零件種類
+            </th>
+
+            <th
+                class="
+                  px-6
+                  py-3
+                  text-left
+                  font-semibold
+                "
+            >
               狀態
             </th>
 
@@ -1907,16 +2693,13 @@ onMounted(() => {
                 "
             >
                 <span
-                    class="
-                    inline-flex
-                    rounded-full
-                    bg-slate-100
-                    px-2.5
-                    py-1
-                    text-xs
-                    font-semibold
-                    text-slate-700
-                  "
+                    :class="[
+                    'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
+
+                    getProductTypeBadgeClass(
+                      product.product_type
+                    )
+                  ]"
                 >
                   {{
                     getProductTypeLabel(
@@ -1924,6 +2707,22 @@ onMounted(() => {
                     )
                   }}
                 </span>
+            </td>
+
+
+            <td
+                class="
+                  px-6
+                  py-4
+                  text-sm
+                  text-slate-600
+                "
+            >
+              {{
+                getPartCategoryLabel(
+                    product
+                )
+              }}
             </td>
 
 
@@ -2421,6 +3220,51 @@ onMounted(() => {
                   handleSubmit
                 "
               >
+                <!-- Immediate Messages -->
+
+                <div
+                    v-if="
+                    errorMessage ||
+                    successMessage
+                  "
+                    class="
+                    space-y-3
+                  "
+                >
+                  <p
+                      v-if="
+                      errorMessage
+                    "
+                      class="
+                      rounded-lg
+                      bg-red-50
+                      px-4
+                      py-3
+                      text-sm
+                      text-red-700
+                    "
+                  >
+                    {{ errorMessage }}
+                  </p>
+
+                  <p
+                      v-if="
+                      successMessage
+                    "
+                      class="
+                      rounded-lg
+                      bg-emerald-50
+                      px-4
+                      py-3
+                      text-sm
+                      text-emerald-700
+                    "
+                  >
+                    {{ successMessage }}
+                  </p>
+                </div>
+
+
                 <!-- Basic -->
 
                 <section>
@@ -2753,9 +3597,6 @@ onMounted(() => {
 
 
                       <label
-                          v-if="
-                          isEditing
-                        "
                           class="
                           cursor-pointer
                           rounded-lg
@@ -2772,7 +3613,7 @@ onMounted(() => {
                         {{
                           uploadingAssetType ===
                           'main'
-                              ? '上傳中...'
+                              ? '處理中...'
                               : '+ 新增圖片'
                         }}
 
@@ -2798,7 +3639,9 @@ onMounted(() => {
 
                     <div
                         v-if="
-                        !isEditing
+                        !getAssetsByType(
+                          'main'
+                        ).length
                       "
                         class="
                         mt-4
@@ -2813,7 +3656,7 @@ onMounted(() => {
                         text-slate-400
                       "
                     >
-                      建立產品後即可上傳圖片
+                      尚未選擇商品照片
                     </div>
 
 
@@ -2833,7 +3676,10 @@ onMounted(() => {
                     >
                       <div
                           v-for="
-                          asset
+                          (
+                            asset,
+                            index
+                          )
                           in getAssetsByType(
                             'main'
                           )
@@ -2867,28 +3713,125 @@ onMounted(() => {
                         <div
                             class="
                             flex
-                            justify-end
+                            items-center
+                            justify-between
+                            gap-3
                             border-t
                             border-slate-200
                             px-3
                             py-2
                           "
                         >
-                          <button
-                              type="button"
+                          <span
                               class="
                               text-xs
                               font-semibold
-                              text-red-600
-                            "
-                              @click="
-                              handleDeleteAsset(
-                                asset
-                              )
+                              text-slate-400
                             "
                           >
-                            刪除
-                          </button>
+                            {{ `#${index + 1}` }}
+                          </span>
+
+                          <div
+                              class="
+                              flex
+                              items-center
+                              gap-2
+                            "
+                          >
+                            <button
+                                type="button"
+                                :disabled="
+                                index === 0 ||
+                                movingAssetId !== null
+                              "
+                                class="
+                                flex
+                                h-8
+                                w-8
+                                items-center
+                                justify-center
+                                rounded-lg
+                                border
+                                border-slate-300
+                                text-sm
+                                text-slate-700
+                                disabled:cursor-not-allowed
+                                disabled:opacity-30
+                              "
+                                @click="
+                                moveAsset(
+                                  'main',
+                                  asset.id,
+                                  -1
+                                )
+                              "
+                            >
+                              ←
+                            </button>
+
+                            <button
+                                type="button"
+                                :disabled="
+                                index ===
+                                getAssetsByType(
+                                  'main'
+                                ).length - 1 ||
+                                movingAssetId !== null
+                              "
+                                class="
+                                flex
+                                h-8
+                                w-8
+                                items-center
+                                justify-center
+                                rounded-lg
+                                border
+                                border-slate-300
+                                text-sm
+                                text-slate-700
+                                disabled:cursor-not-allowed
+                                disabled:opacity-30
+                              "
+                                @click="
+                                moveAsset(
+                                  'main',
+                                  asset.id,
+                                  1
+                                )
+                              "
+                            >
+                              →
+                            </button>
+
+                            <button
+                                type="button"
+                                :disabled="
+                                deletingAssetId ===
+                                asset.id ||
+                                movingAssetId !== null
+                              "
+                                class="
+                                ml-1
+                                text-xs
+                                font-semibold
+                                text-red-600
+                                disabled:opacity-50
+                              "
+                                @click="
+                                handleDeleteAsset(
+                                  asset
+                                )
+                              "
+                            >
+                              {{
+                                deletingAssetId ===
+                                asset.id
+                                    ? '刪除中...'
+                                    : '刪除'
+                              }}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -2947,7 +3890,7 @@ onMounted(() => {
                         text-slate-500
                       "
                     >
-                      每個部位的材質、備註、照片與申請附件集中於同一產品。
+                      每個部位的材質、備註、照片與申請附件圖片集中於同一產品。
                     </p>
                   </div>
 
@@ -2997,9 +3940,6 @@ onMounted(() => {
 
 
                       <label
-                          v-if="
-                          isEditing
-                        "
                           class="
                           cursor-pointer
                           rounded-lg
@@ -3016,7 +3956,7 @@ onMounted(() => {
                         {{
                           uploadingAssetType ===
                           'full_gun'
-                              ? '上傳中...'
+                              ? '處理中...'
                               : '+ 新增圖片'
                         }}
 
@@ -3042,7 +3982,9 @@ onMounted(() => {
 
                     <div
                         v-if="
-                        !isEditing
+                        !getAssetsByType(
+                          'full_gun'
+                        ).length
                       "
                         class="
                         mt-4
@@ -3057,7 +3999,7 @@ onMounted(() => {
                         text-slate-400
                       "
                     >
-                      建立產品後即可上傳全槍照
+                      尚未選擇全槍照
                     </div>
 
 
@@ -3077,7 +4019,10 @@ onMounted(() => {
                     >
                       <div
                           v-for="
-                          asset
+                          (
+                            asset,
+                            index
+                          )
                           in getAssetsByType(
                             'full_gun'
                           )
@@ -3113,6 +4058,7 @@ onMounted(() => {
                             flex
                             items-center
                             justify-between
+                            gap-3
                             border-t
                             border-slate-200
                             px-3
@@ -3122,27 +4068,113 @@ onMounted(() => {
                           <span
                               class="
                               text-xs
+                              font-semibold
                               text-slate-400
                             "
                           >
-                            #{{ asset.sort_order + 1 }}
+                            {{ `#${index + 1}` }}
                           </span>
 
-                          <button
-                              type="button"
+                          <div
                               class="
-                              text-xs
-                              font-semibold
-                              text-red-600
-                            "
-                              @click="
-                              handleDeleteAsset(
-                                asset
-                              )
+                              flex
+                              items-center
+                              gap-2
                             "
                           >
-                            刪除
-                          </button>
+                            <button
+                                type="button"
+                                :disabled="
+                                index === 0 ||
+                                movingAssetId !== null
+                              "
+                                class="
+                                flex
+                                h-8
+                                w-8
+                                items-center
+                                justify-center
+                                rounded-lg
+                                border
+                                border-slate-300
+                                text-sm
+                                text-slate-700
+                                disabled:cursor-not-allowed
+                                disabled:opacity-30
+                              "
+                                @click="
+                                moveAsset(
+                                  'full_gun',
+                                  asset.id,
+                                  -1
+                                )
+                              "
+                            >
+                              ←
+                            </button>
+
+                            <button
+                                type="button"
+                                :disabled="
+                                index ===
+                                getAssetsByType(
+                                  'full_gun'
+                                ).length - 1 ||
+                                movingAssetId !== null
+                              "
+                                class="
+                                flex
+                                h-8
+                                w-8
+                                items-center
+                                justify-center
+                                rounded-lg
+                                border
+                                border-slate-300
+                                text-sm
+                                text-slate-700
+                                disabled:cursor-not-allowed
+                                disabled:opacity-30
+                              "
+                                @click="
+                                moveAsset(
+                                  'full_gun',
+                                  asset.id,
+                                  1
+                                )
+                              "
+                            >
+                              →
+                            </button>
+
+                            <button
+                                type="button"
+                                :disabled="
+                                deletingAssetId ===
+                                asset.id ||
+                                movingAssetId !== null
+                              "
+                                class="
+                                ml-1
+                                text-xs
+                                font-semibold
+                                text-red-600
+                                disabled:opacity-50
+                              "
+                                @click="
+                                handleDeleteAsset(
+                                  asset
+                                )
+                              "
+                            >
+                              {{
+                                deletingAssetId ===
+                                asset.id
+                                    ? '刪除中...'
+                                    : '刪除'
+                              }}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -3478,9 +4510,6 @@ onMounted(() => {
 
 
                               <label
-                                  v-if="
-                                  isEditing
-                                "
                                   class="
                                   cursor-pointer
                                   rounded-lg
@@ -3497,7 +4526,7 @@ onMounted(() => {
                                 {{
                                   uploadingAssetType ===
                                   component.type
-                                      ? '上傳中...'
+                                      ? '處理中...'
                                       : '+ 新增圖片'
                                 }}
 
@@ -3523,7 +4552,9 @@ onMounted(() => {
 
                             <div
                                 v-if="
-                                !isEditing
+                                !getAssetsByType(
+                                  component.type
+                                ).length
                               "
                                 class="
                                 mt-4
@@ -3538,7 +4569,7 @@ onMounted(() => {
                                 text-slate-400
                               "
                             >
-                              建立產品後即可上傳{{ component.imageLabel }}
+                              尚未選擇{{ component.imageLabel }}
                             </div>
 
 
@@ -3559,7 +4590,10 @@ onMounted(() => {
                             >
                               <div
                                   v-for="
-                                  asset
+                                  (
+                                    asset,
+                                    index
+                                  )
                                   in getAssetsByType(
                                     component.type
                                   )
@@ -3604,49 +4638,126 @@ onMounted(() => {
 
                                 <div
                                     class="
-                                    flex
-                                    items-center
-                                    justify-between
-                                    border-t
-                                    border-slate-200
-                                    px-3
-                                    py-2
-                                  "
+                            flex
+                            items-center
+                            justify-between
+                            gap-3
+                            border-t
+                            border-slate-200
+                            px-3
+                            py-2
+                          "
                                 >
-                                  <span
-                                      class="
-                                      text-xs
-                                      text-slate-400
-                                    "
-                                  >
-                                    #{{ asset.sort_order + 1 }}
-                                  </span>
+                          <span
+                              class="
+                              text-xs
+                              font-semibold
+                              text-slate-400
+                            "
+                          >
+                            {{ `#${index + 1}` }}
+                          </span>
 
-                                  <button
-                                      type="button"
-                                      :disabled="
-                                      deletingAssetId ===
-                                      asset.id
-                                    "
+                                  <div
                                       class="
-                                      text-xs
-                                      font-semibold
-                                      text-red-600
-                                      disabled:opacity-50
-                                    "
-                                      @click="
-                                      handleDeleteAsset(
-                                        asset
-                                      )
-                                    "
+                              flex
+                              items-center
+                              gap-2
+                            "
                                   >
-                                    {{
-                                      deletingAssetId ===
-                                      asset.id
-                                          ? '刪除中...'
-                                          : '刪除'
-                                    }}
-                                  </button>
+                                    <button
+                                        type="button"
+                                        :disabled="
+                                index === 0 ||
+                                movingAssetId !== null
+                              "
+                                        class="
+                                flex
+                                h-8
+                                w-8
+                                items-center
+                                justify-center
+                                rounded-lg
+                                border
+                                border-slate-300
+                                text-sm
+                                text-slate-700
+                                disabled:cursor-not-allowed
+                                disabled:opacity-30
+                              "
+                                        @click="
+                                moveAsset(
+                                  component.type,
+                                  asset.id,
+                                  -1
+                                )
+                              "
+                                    >
+                                      ←
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        :disabled="
+                                index ===
+                                getAssetsByType(
+                                  component.type
+                                ).length - 1 ||
+                                movingAssetId !== null
+                              "
+                                        class="
+                                flex
+                                h-8
+                                w-8
+                                items-center
+                                justify-center
+                                rounded-lg
+                                border
+                                border-slate-300
+                                text-sm
+                                text-slate-700
+                                disabled:cursor-not-allowed
+                                disabled:opacity-30
+                              "
+                                        @click="
+                                moveAsset(
+                                  component.type,
+                                  asset.id,
+                                  1
+                                )
+                              "
+                                    >
+                                      →
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        :disabled="
+                                deletingAssetId ===
+                                asset.id ||
+                                movingAssetId !== null
+                              "
+                                        class="
+                                ml-1
+                                text-xs
+                                font-semibold
+                                text-red-600
+                                disabled:opacity-50
+                              "
+                                        @click="
+                                handleDeleteAsset(
+                                  asset
+                                )
+                              "
+                                    >
+                                      {{
+                                        deletingAssetId ===
+                                        asset.id
+                                            ? '刪除中...'
+                                            : '刪除'
+                                      }}
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -3721,9 +4832,6 @@ onMounted(() => {
 
 
                       <label
-                          v-if="
-                          isEditing
-                        "
                           class="
                           cursor-pointer
                           rounded-lg
@@ -3740,7 +4848,7 @@ onMounted(() => {
                         {{
                           uploadingAssetType ===
                           'exploded_diagram'
-                              ? '上傳中...'
+                              ? '處理中...'
                               : '+ 新增圖片'
                         }}
 
@@ -3766,7 +4874,9 @@ onMounted(() => {
 
                     <div
                         v-if="
-                        !isEditing
+                        !getAssetsByType(
+                          'exploded_diagram'
+                        ).length
                       "
                         class="
                         mt-4
@@ -3781,7 +4891,7 @@ onMounted(() => {
                         text-slate-400
                       "
                     >
-                      建立產品後即可上傳爆炸結構圖
+                      尚未選擇爆炸結構圖
                     </div>
 
 
@@ -3801,7 +4911,10 @@ onMounted(() => {
                     >
                       <div
                           v-for="
-                          asset
+                          (
+                            asset,
+                            index
+                          )
                           in getAssetsByType(
                             'exploded_diagram'
                           )
@@ -3837,6 +4950,7 @@ onMounted(() => {
                             flex
                             items-center
                             justify-between
+                            gap-3
                             border-t
                             border-slate-200
                             px-3
@@ -3846,27 +4960,113 @@ onMounted(() => {
                           <span
                               class="
                               text-xs
+                              font-semibold
                               text-slate-400
                             "
                           >
-                            #{{ asset.sort_order + 1 }}
+                            {{ `#${index + 1}` }}
                           </span>
 
-                          <button
-                              type="button"
+                          <div
                               class="
-                              text-xs
-                              font-semibold
-                              text-red-600
-                            "
-                              @click="
-                              handleDeleteAsset(
-                                asset
-                              )
+                              flex
+                              items-center
+                              gap-2
                             "
                           >
-                            刪除
-                          </button>
+                            <button
+                                type="button"
+                                :disabled="
+                                index === 0 ||
+                                movingAssetId !== null
+                              "
+                                class="
+                                flex
+                                h-8
+                                w-8
+                                items-center
+                                justify-center
+                                rounded-lg
+                                border
+                                border-slate-300
+                                text-sm
+                                text-slate-700
+                                disabled:cursor-not-allowed
+                                disabled:opacity-30
+                              "
+                                @click="
+                                moveAsset(
+                                  'exploded_diagram',
+                                  asset.id,
+                                  -1
+                                )
+                              "
+                            >
+                              ←
+                            </button>
+
+                            <button
+                                type="button"
+                                :disabled="
+                                index ===
+                                getAssetsByType(
+                                  'exploded_diagram'
+                                ).length - 1 ||
+                                movingAssetId !== null
+                              "
+                                class="
+                                flex
+                                h-8
+                                w-8
+                                items-center
+                                justify-center
+                                rounded-lg
+                                border
+                                border-slate-300
+                                text-sm
+                                text-slate-700
+                                disabled:cursor-not-allowed
+                                disabled:opacity-30
+                              "
+                                @click="
+                                moveAsset(
+                                  'exploded_diagram',
+                                  asset.id,
+                                  1
+                                )
+                              "
+                            >
+                              →
+                            </button>
+
+                            <button
+                                type="button"
+                                :disabled="
+                                deletingAssetId ===
+                                asset.id ||
+                                movingAssetId !== null
+                              "
+                                class="
+                                ml-1
+                                text-xs
+                                font-semibold
+                                text-red-600
+                                disabled:opacity-50
+                              "
+                                @click="
+                                handleDeleteAsset(
+                                  asset
+                                )
+                              "
+                            >
+                              {{
+                                deletingAssetId ===
+                                asset.id
+                                    ? '刪除中...'
+                                    : '刪除'
+                              }}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -3919,7 +5119,7 @@ onMounted(() => {
                         text-slate-500
                       "
                     >
-                      上傳全槍申請時所需的相關文件。
+                      請將申請文件各頁轉成 JPG 或 PNG 後上傳，可一次選擇多張。
                     </p>
 
 
@@ -3990,6 +5190,12 @@ onMounted(() => {
                                 "
                               >
                                 已上傳
+                                {{
+                                  getAssetsByType(
+                                      document.type
+                                  ).length
+                                }}
+                                張
                               </span>
                             </div>
 
@@ -4010,15 +5216,12 @@ onMounted(() => {
                                 text-slate-400
                               "
                             >
-                              支援 PDF、Word、JPG、PNG，單檔最大 10 MB。
+                              僅支援 JPG、PNG，可一次上傳多張，系統會依上傳順序輸出到 Word。
                             </p>
                           </div>
 
 
                           <label
-                              v-if="
-                              isEditing
-                            "
                               class="
                               cursor-pointer
                               rounded-lg
@@ -4035,23 +5238,20 @@ onMounted(() => {
                             {{
                               uploadingAssetType ===
                               document.type
-                                  ? '上傳中...'
-                                  : '+ 新增文件'
+                                  ? '處理中...'
+                                  : '+ 新增圖片'
                             }}
 
                             <input
                                 type="file"
                                 multiple
                                 accept="
-                                application/pdf,
-                                application/msword,
-                                application/vnd.openxmlformats-officedocument.wordprocessingml.document,
                                 image/jpeg,
                                 image/png
                               "
                                 class="hidden"
                                 @change="
-                                handleDocumentFiles(
+                                handleDocumentImageFiles(
                                   document.type,
                                   $event
                                 )
@@ -4063,7 +5263,9 @@ onMounted(() => {
 
                         <div
                             v-if="
-                            !isEditing
+                            !getAssetsByType(
+                              document.type
+                            ).length
                           "
                             class="
                             mt-4
@@ -4078,7 +5280,7 @@ onMounted(() => {
                             text-slate-400
                           "
                         >
-                          建立產品後即可上傳{{ document.label }}
+                          尚未選擇{{ document.label }}
                         </div>
 
 
@@ -4090,12 +5292,19 @@ onMounted(() => {
                           "
                             class="
                             mt-4
-                            space-y-2
+                            grid
+                            grid-cols-1
+                            gap-3
+                            sm:grid-cols-2
+                            lg:grid-cols-3
                           "
                         >
                           <div
                               v-for="
-                              asset
+                              (
+                                asset,
+                                index
+                              )
                               in getAssetsByType(
                                 document.type
                               )
@@ -4104,54 +5313,96 @@ onMounted(() => {
                               asset.id
                             "
                               class="
-                              flex
-                              flex-wrap
-                              items-center
-                              justify-between
-                              gap-4
+                              overflow-hidden
                               rounded-lg
                               border
                               border-slate-200
                               bg-white
-                              px-4
-                              py-3
                             "
                           >
-                            <div
+                            <a
+                                v-if="
+                                isImageAsset(
+                                  asset
+                                ) &&
+                                asset.preview_url
+                              "
+                                :href="
+                                asset.preview_url
+                              "
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 class="
-                                min-w-0
-                                flex-1
+                                block
+                                bg-slate-50
                               "
                             >
-                              <p
+                              <img
+                                  :src="
+                                  asset.preview_url
+                                "
+                                  :alt="
+                                  `${document.label} ${index + 1}`
+                                "
                                   class="
-                                  truncate
-                                  text-sm
-                                  font-semibold
-                                  text-slate-800
+                                  aspect-[4/5]
+                                  w-full
+                                  object-contain
+                                  p-3
                                 "
                               >
-                                {{
-                                  getAssetFileName(
-                                      asset
-                                  )
-                                }}
-                              </p>
+                            </a>
 
-                              <div
-                                  class="
-                                  mt-1
-                                  flex
-                                  flex-wrap
-                                  gap-x-3
-                                  text-xs
-                                  text-slate-400
-                                "
-                              >
-                                <span
+                            <div
+                                v-else
+                                class="
+                                flex
+                                aspect-[4/5]
+                                items-center
+                                justify-center
+                                bg-slate-50
+                                p-5
+                                text-center
+                              "
+                            >
+                              <div>
+                                <p
+                                    class="
+                                    text-xs
+                                    font-bold
+                                    uppercase
+                                    tracking-wide
+                                    text-amber-600
+                                  "
+                                >
+                                  舊格式檔案
+                                </p>
+
+                                <p
+                                    class="
+                                    mt-2
+                                    break-all
+                                    text-sm
+                                    font-semibold
+                                    text-slate-700
+                                  "
+                                >
+                                  {{
+                                    getAssetFileName(
+                                        asset
+                                    )
+                                  }}
+                                </p>
+
+                                <p
                                     v-if="
                                     asset.file_size !==
                                     null
+                                  "
+                                    class="
+                                    mt-1
+                                    text-xs
+                                    text-slate-400
                                   "
                                 >
                                   {{
@@ -4159,61 +5410,171 @@ onMounted(() => {
                                         asset.file_size
                                     )
                                   }}
-                                </span>
+                                </p>
                               </div>
                             </div>
-
 
                             <div
                                 class="
                                 flex
                                 items-center
-                                gap-4
+                                justify-between
+                                gap-3
+                                border-t
+                                border-slate-200
+                                px-3
+                                py-2.5
                               "
                             >
-                              <a
-                                  v-if="
-                                  asset.preview_url
-                                "
-                                  :href="
-                                  asset.preview_url
-                                "
-                                  target="_blank"
-                                  rel="noopener noreferrer"
+                              <div
                                   class="
-                                  text-sm
-                                  font-semibold
-                                  text-blue-700
+                                  min-w-0
                                 "
                               >
-                                開啟
-                              </a>
+                                <p
+                                    class="
+                                    text-xs
+                                    font-semibold
+                                    text-slate-500
+                                  "
+                                >
+                                  第 {{ index + 1 }} 張
+                                </p>
 
-                              <button
-                                  type="button"
-                                  :disabled="
-                                  deletingAssetId ===
-                                  asset.id
-                                "
+                                <p
+                                    class="
+                                    mt-0.5
+                                    truncate
+                                    text-xs
+                                    text-slate-400
+                                  "
+                                >
+                                  {{
+                                    getAssetFileName(
+                                        asset
+                                    )
+                                  }}
+                                </p>
+                              </div>
+
+                              <div
                                   class="
-                                  text-sm
-                                  font-semibold
-                                  text-red-600
-                                  disabled:opacity-50
-                                "
-                                  @click="
-                                  handleDeleteAsset(
-                                    asset
-                                  )
+                                  flex
+                                  shrink-0
+                                  items-center
+                                  gap-2
                                 "
                               >
-                                {{
-                                  deletingAssetId ===
-                                  asset.id
-                                      ? '刪除中...'
-                                      : '刪除'
-                                }}
-                              </button>
+                                <button
+                                    type="button"
+                                    :disabled="
+                                    index === 0 ||
+                                    movingAssetId !== null
+                                  "
+                                    class="
+                                    flex
+                                    h-8
+                                    w-8
+                                    items-center
+                                    justify-center
+                                    rounded-lg
+                                    border
+                                    border-slate-300
+                                    text-sm
+                                    text-slate-700
+                                    disabled:cursor-not-allowed
+                                    disabled:opacity-30
+                                  "
+                                    @click="
+                                    moveAsset(
+                                      document.type,
+                                      asset.id,
+                                      -1
+                                    )
+                                  "
+                                >
+                                  ←
+                                </button>
+
+                                <button
+                                    type="button"
+                                    :disabled="
+                                    index ===
+                                    getAssetsByType(
+                                      document.type
+                                    ).length - 1 ||
+                                    movingAssetId !== null
+                                  "
+                                    class="
+                                    flex
+                                    h-8
+                                    w-8
+                                    items-center
+                                    justify-center
+                                    rounded-lg
+                                    border
+                                    border-slate-300
+                                    text-sm
+                                    text-slate-700
+                                    disabled:cursor-not-allowed
+                                    disabled:opacity-30
+                                  "
+                                    @click="
+                                    moveAsset(
+                                      document.type,
+                                      asset.id,
+                                      1
+                                    )
+                                  "
+                                >
+                                  →
+                                </button>
+
+                                <a
+                                    v-if="
+                                    asset.preview_url
+                                  "
+                                    :href="
+                                    asset.preview_url
+                                  "
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="
+                                    text-xs
+                                    font-semibold
+                                    text-blue-700
+                                  "
+                                >
+                                  開啟
+                                </a>
+
+                                <button
+                                    type="button"
+                                    :disabled="
+                                    deletingAssetId ===
+                                    asset.id ||
+                                    movingAssetId !== null
+                                  "
+                                    class="
+                                    text-xs
+                                    font-semibold
+                                    text-red-600
+                                    disabled:opacity-50
+                                  "
+                                    @click="
+                                    handleDeleteAsset(
+                                      asset
+                                    )
+                                  "
+                                >
+                                  {{
+                                    deletingAssetId ===
+                                    asset.id
+                                        ? '刪除中...'
+                                        : '刪除'
+                                  }}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -4529,8 +5890,8 @@ onMounted(() => {
               >
                 {{
                   isEditing
-                      ? '照片與附件會立即上傳，文字資料請記得儲存修改。'
-                      : '建立產品後即可繼續上傳照片與附件。'
+                      ? '圖片會立即上傳；修改文字資料後請按「儲存修改」。'
+                      : '可先完成文字資料與圖片選擇，按「建立產品」後會一次儲存。'
                 }}
               </p>
 
@@ -4568,8 +5929,7 @@ onMounted(() => {
                     type="submit"
                     form="product-form"
                     :disabled="
-                    isSaving ||
-                    isLoadingEditData
+                    !canSubmitProduct
                   "
                     class="
                     rounded-lg
@@ -4579,7 +5939,11 @@ onMounted(() => {
                     text-sm
                     font-semibold
                     text-white
-                    disabled:opacity-50
+                    transition
+                    disabled:cursor-not-allowed
+                    disabled:bg-slate-300
+                    disabled:text-slate-500
+                    disabled:opacity-100
                   "
                 >
                   {{

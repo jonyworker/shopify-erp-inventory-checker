@@ -39,6 +39,102 @@ const currentTool = computed({
   set: (value) => emit('update:modelValue', value)
 })
 
+
+const expandedGroups =
+    ref({})
+
+
+function ensureGroupStates() {
+  for (
+      const group
+      of props.groups
+      ) {
+    if (
+        expandedGroups.value[
+            group.label
+            ] === undefined
+    ) {
+      expandedGroups.value[
+          group.label
+          ] = true
+    }
+  }
+}
+
+
+function isGroupExpanded(
+    group
+) {
+  return (
+      expandedGroups.value[
+          group.label
+          ] !== false
+  )
+}
+
+
+function toggleGroup(
+    group
+) {
+  expandedGroups.value[
+      group.label
+      ] =
+      !isGroupExpanded(
+          group
+      )
+}
+
+
+function openActiveGroup() {
+  for (
+      const group
+      of props.groups
+      ) {
+    if (
+        groupHasActiveTool(
+            group
+        )
+    ) {
+      expandedGroups.value[
+          group.label
+          ] = true
+    }
+  }
+}
+
+
+function getGroupTools(
+    group
+) {
+  if (
+      Array.isArray(
+          group.sections
+      )
+  ) {
+    return group.sections.flatMap(
+        section =>
+            section.tools ?? []
+    )
+  }
+
+
+  return group.tools ?? []
+}
+
+
+function groupHasActiveTool(
+    group
+) {
+  return getGroupTools(
+      group
+  )
+      .some(
+          tool =>
+              tool.value ===
+              currentTool.value
+      )
+}
+
 function selectTool(tool) {
   if (tool.disabled) return
 
@@ -62,6 +158,27 @@ function handleEscape(event) {
     closeMobileDrawer()
   }
 }
+
+watch(
+    () => props.groups,
+    () => {
+      ensureGroupStates()
+      openActiveGroup()
+    },
+    {
+      immediate: true,
+      deep: true
+    }
+)
+
+
+watch(
+    () => currentTool.value,
+    () => {
+      openActiveGroup()
+    }
+)
+
 
 watch(
     () => props.mobileOpen,
@@ -193,35 +310,189 @@ onBeforeUnmount(() => {
         >
           <!-- Expanded -->
           <template v-if="!collapsed">
-            <div
-              class="
+            <button
+                type="button"
+                class="
                 mb-2
                 flex
+                w-full
                 items-center
                 gap-2
+                rounded-lg
                 px-3
+                py-1.5
+                text-left
                 text-slate-400
+                transition
+                hover:bg-slate-50
+                hover:text-slate-600
+              "
+                @click="
+                toggleGroup(
+                  group
+                )
               "
             >
               <ToolGroupIcon :type="group.icon" />
 
-              <p
-                class="
+              <span
+                  class="
+                  min-w-0
+                  flex-1
                   text-xs
                   font-bold
                   tracking-wide
                 "
               >
                 {{ group.label }}
-              </p>
+              </span>
+
+              <span
+                  class="
+                  text-sm
+                  transition-transform
+                  duration-200
+                "
+                  :class="
+                  isGroupExpanded(
+                    group
+                  )
+                    ? 'rotate-90'
+                    : ''
+                "
+              >
+                ›
+              </span>
+            </button>
+
+            <div
+                v-if="
+                group.sections?.length
+              "
+                v-show="
+                isGroupExpanded(
+                  group
+                )
+              "
+                class="
+                space-y-5
+                pl-7
+              "
+            >
+              <section
+                  v-for="
+                  section
+                  in group.sections
+                "
+                  :key="
+                  section.label
+                "
+              >
+                <p
+                    class="
+                    mb-1.5
+                    px-3
+                    py-1.5
+                    text-[11px]
+                    font-bold
+                    tracking-wide
+                    text-slate-400
+                  "
+                >
+                  {{ section.label }}
+                </p>
+
+                <div
+                    class="
+                    space-y-1
+                  "
+                >
+                  <button
+                      v-for="
+                      tool
+                      in section.tools
+                    "
+                      :key="
+                      tool.value
+                    "
+                      type="button"
+                      :disabled="
+                      tool.disabled
+                    "
+                      class="
+                      flex w-full
+                      items-center
+                      rounded-xl
+                      px-3 py-2.5
+                      text-left text-sm
+                      transition
+                    "
+                      :class="[
+                      currentTool === tool.value
+                        ? 'bg-slate-900 font-medium text-white shadow-sm'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950',
+
+                      tool.disabled
+                        ? 'cursor-not-allowed opacity-40'
+                        : ''
+                    ]"
+                      @click="
+                      selectTool(
+                        tool
+                      )
+                    "
+                  >
+                    <span
+                        class="
+                        min-w-0
+                        flex-1
+                      "
+                    >
+                      {{ tool.label }}
+                    </span>
+
+                    <span
+                        v-if="
+                        currentTool ===
+                        tool.value
+                      "
+                        class="
+                        ml-3
+                        h-1.5 w-1.5
+                        shrink-0
+                        rounded-full
+                        bg-white
+                      "
+                    />
+                  </button>
+                </div>
+              </section>
             </div>
 
-            <div class="space-y-1 pl-7">
+            <div
+                v-else
+                v-show="
+                isGroupExpanded(
+                  group
+                )
+              "
+                class="
+                space-y-1
+                pl-7
+              "
+            >
               <button
-                  v-for="tool in group.tools"
-                  :key="tool.value"
+                  v-for="
+                  tool
+                  in group.tools
+                "
+                  :key="
+                  tool.value
+                "
                   type="button"
-                  :disabled="tool.disabled"
+                  :disabled="
+                  tool.disabled
+                "
                   class="
                   flex w-full
                   items-center
@@ -239,14 +510,26 @@ onBeforeUnmount(() => {
                     ? 'cursor-not-allowed opacity-40'
                     : ''
                 ]"
-                  @click="selectTool(tool)"
+                  @click="
+                  selectTool(
+                    tool
+                  )
+                "
               >
-                <span class="min-w-0 flex-1">
+                <span
+                    class="
+                    min-w-0
+                    flex-1
+                  "
+                >
                   {{ tool.label }}
                 </span>
 
                 <span
-                    v-if="currentTool === tool.value"
+                    v-if="
+                    currentTool ===
+                    tool.value
+                  "
                     class="
                     ml-3
                     h-1.5 w-1.5
@@ -274,12 +557,12 @@ onBeforeUnmount(() => {
     hover:text-slate-950
   "
                   :class="
-    group.tools.some(
-      tool => tool.value === currentTool
-    )
-      ? 'bg-slate-900 text-white hover:bg-slate-900 hover:text-white'
-      : ''
-  "
+                  groupHasActiveTool(
+                    group
+                  )
+                    ? 'bg-slate-900 text-white hover:bg-slate-900 hover:text-white'
+                    : ''
+                "
                   :title="group.label"
               >
                 <ToolGroupIcon :type="group.icon" />
@@ -314,32 +597,117 @@ onBeforeUnmount(() => {
                   {{ group.label }}
                 </p>
 
-                <button
-                    v-for="tool in group.tools"
-                    :key="tool.value"
-                    type="button"
-                    :disabled="tool.disabled"
-                    class="
-                    flex w-full
-                    items-center
-                    rounded-lg
-                    px-3 py-2.5
-                    text-left text-sm
-                    transition
+                <template
+                    v-if="
+                    group.sections?.length
                   "
-                    :class="[
-                    currentTool === tool.value
-                      ? 'bg-slate-900 text-white'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950',
-
-                    tool.disabled
-                      ? 'cursor-not-allowed opacity-40'
-                      : ''
-                  ]"
-                    @click="selectTool(tool)"
                 >
-                  {{ tool.label }}
-                </button>
+                  <section
+                      v-for="
+                      section
+                      in group.sections
+                    "
+                      :key="
+                      section.label
+                    "
+                      class="
+                      mb-3
+                      last:mb-0
+                    "
+                  >
+                    <p
+                        class="
+                        px-3
+                        pb-1.5
+                        pt-1
+                        text-[11px]
+                        font-bold
+                        tracking-wide
+                        text-slate-400
+                      "
+                    >
+                      {{ section.label }}
+                    </p>
+
+                    <button
+                        v-for="
+                        tool
+                        in section.tools
+                      "
+                        :key="
+                        tool.value
+                      "
+                        type="button"
+                        :disabled="
+                        tool.disabled
+                      "
+                        class="
+                        flex w-full
+                        items-center
+                        rounded-lg
+                        px-3 py-2.5
+                        text-left text-sm
+                        transition
+                      "
+                        :class="[
+                        currentTool === tool.value
+                          ? 'bg-slate-900 text-white'
+                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950',
+
+                        tool.disabled
+                          ? 'cursor-not-allowed opacity-40'
+                          : ''
+                      ]"
+                        @click="
+                        selectTool(
+                          tool
+                        )
+                      "
+                    >
+                      {{ tool.label }}
+                    </button>
+                  </section>
+                </template>
+
+                <template v-else>
+                  <button
+                      v-for="
+                      tool
+                      in group.tools
+                    "
+                      :key="
+                      tool.value
+                    "
+                      type="button"
+                      :disabled="
+                      tool.disabled
+                    "
+                      class="
+                      flex w-full
+                      items-center
+                      rounded-lg
+                      px-3 py-2.5
+                      text-left text-sm
+                      transition
+                    "
+                      :class="[
+                      currentTool === tool.value
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950',
+
+                      tool.disabled
+                        ? 'cursor-not-allowed opacity-40'
+                        : ''
+                    ]"
+                      @click="
+                      selectTool(
+                        tool
+                      )
+                    "
+                  >
+                    {{ tool.label }}
+                  </button>
+                </template>
               </div>
             </div>
           </template>
@@ -474,25 +842,188 @@ onBeforeUnmount(() => {
                   :key="group.label"
                   class="mb-6"
               >
-                <p
+                <button
+                    type="button"
                     class="
                     mb-2
+                    flex
+                    w-full
+                    items-center
+                    gap-2
+                    rounded-lg
                     px-3
-                    text-xs
-                    font-bold
-                    tracking-wide
+                    py-1.5
+                    text-left
                     text-slate-400
+                    transition
+                    hover:bg-slate-50
+                    hover:text-slate-600
+                  "
+                    @click="
+                    toggleGroup(
+                      group
+                    )
                   "
                 >
-                  {{ group.label }}
-                </p>
+                  <ToolGroupIcon :type="group.icon" />
 
-                <div class="space-y-1">
+                  <span
+                      class="
+                      min-w-0
+                      flex-1
+                      text-xs
+                      font-bold
+                      tracking-wide
+                    "
+                  >
+                    {{ group.label }}
+                  </span>
+
+                  <span
+                      class="
+                      text-sm
+                      transition-transform
+                      duration-200
+                    "
+                      :class="
+                      isGroupExpanded(
+                        group
+                      )
+                        ? 'rotate-90'
+                        : ''
+                    "
+                  >
+                    ›
+                  </span>
+                </button>
+
+                <div
+                    v-if="
+                    group.sections?.length
+                  "
+                    v-show="
+                    isGroupExpanded(
+                      group
+                    )
+                  "
+                    class="
+                    space-y-5
+                  "
+                >
+                  <section
+                      v-for="
+                      section
+                      in group.sections
+                    "
+                      :key="
+                      section.label
+                    "
+                  >
+                    <p
+                        class="
+                        mb-1.5
+                        px-3
+                        py-1.5
+                        text-[11px]
+                        font-bold
+                        tracking-wide
+                        text-slate-400
+                      "
+                    >
+                      {{ section.label }}
+                    </p>
+
+                    <div
+                        class="
+                        space-y-1
+                      "
+                    >
+                      <button
+                          v-for="
+                          tool
+                          in section.tools
+                        "
+                          :key="
+                          tool.value
+                        "
+                          type="button"
+                          :disabled="
+                          tool.disabled
+                        "
+                          class="
+                          flex w-full
+                          items-center
+                          rounded-xl
+                          px-3 py-2.5
+                          text-left
+                          text-sm
+                          transition
+                        "
+                          :class="[
+                          currentTool === tool.value
+                            ? 'bg-slate-900 font-medium text-white shadow-sm'
+                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950',
+
+                          tool.disabled
+                            ? 'cursor-not-allowed opacity-40'
+                            : ''
+                        ]"
+                          @click="
+                          selectTool(
+                            tool
+                          )
+                        "
+                      >
+                        <span
+                            class="
+                            min-w-0
+                            flex-1
+                          "
+                        >
+                          {{ tool.label }}
+                        </span>
+
+                        <span
+                            v-if="
+                            currentTool ===
+                            tool.value
+                          "
+                            class="
+                            ml-3
+                            h-1.5 w-1.5
+                            shrink-0
+                            rounded-full
+                            bg-white
+                          "
+                        />
+                      </button>
+                    </div>
+                  </section>
+                </div>
+
+                <div
+                    v-else
+                    v-show="
+                    isGroupExpanded(
+                      group
+                    )
+                  "
+                    class="
+                    space-y-1
+                  "
+                >
                   <button
-                      v-for="tool in group.tools"
-                      :key="tool.value"
+                      v-for="
+                      tool
+                      in group.tools
+                    "
+                      :key="
+                      tool.value
+                    "
                       type="button"
-                      :disabled="tool.disabled"
+                      :disabled="
+                      tool.disabled
+                    "
                       class="
                       flex w-full
                       items-center
@@ -511,14 +1042,26 @@ onBeforeUnmount(() => {
                         ? 'cursor-not-allowed opacity-40'
                         : ''
                     ]"
-                      @click="selectTool(tool)"
+                      @click="
+                      selectTool(
+                        tool
+                      )
+                    "
                   >
-                    <span class="min-w-0 flex-1">
+                    <span
+                        class="
+                        min-w-0
+                        flex-1
+                      "
+                    >
                       {{ tool.label }}
                     </span>
 
                     <span
-                        v-if="currentTool === tool.value"
+                        v-if="
+                        currentTool ===
+                        tool.value
+                      "
                         class="
                         ml-3
                         h-1.5 w-1.5
