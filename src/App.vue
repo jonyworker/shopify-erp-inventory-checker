@@ -12,6 +12,16 @@ import {
 } from '@/stores/authState'
 
 import AppSidebar from './components/AppSidebar.vue'
+import AdminPermissionOverview from './tools/admin/AdminPermissionOverview.vue'
+import AdminDepartmentManager from './tools/admin/AdminDepartmentManager.vue'
+import AdminEmployeeManager from './tools/admin/AdminEmployeeManager.vue'
+import {
+  permissionReady,
+  permissionUserId,
+  isSystemAdmin,
+  can,
+  canViewTool
+} from '@/stores/permissionState'
 
 import InventoryShopifyChecker from './tools/inventory/InventoryShopifyChecker.vue'
 import InventoryRutenChecker from './tools/inventory/InventoryRutenChecker.vue'
@@ -31,6 +41,7 @@ import PermitSearch from './tools/permits/PermitSearch.vue'
 
 import ProductManager from './tools/products/ProductManager.vue'
 import ApplicationBuilder from './tools/products/ApplicationBuilder.vue'
+import MeetingArchive from './tools/meetings/MeetingArchive.vue'
 
 
 /* ========================================
@@ -38,13 +49,69 @@ import ApplicationBuilder from './tools/products/ApplicationBuilder.vue'
 ======================================== */
 
 const currentTool =
-    ref('inventoryShopify')
+    ref('')
 
 const sidebarCollapsed =
     ref(false)
 
 const mobileSidebarOpen =
     ref(false)
+
+// 管理權限與一般業務權限分離。
+// 僅在後端回傳的管理員身分與當前 Auth 使用者一致時顯示入口。
+const ADMIN_PERMISSION_PAGE_KEY = 'adminPermissionOverview'
+const ADMIN_DEPARTMENT_PAGE_KEY = 'adminDepartmentManager'
+const ADMIN_EMPLOYEE_PAGE_KEY = 'adminEmployeeManager'
+const ADMIN_PAGE_KEYS = new Set([
+  ADMIN_PERMISSION_PAGE_KEY,
+  ADMIN_DEPARTMENT_PAGE_KEY,
+  ADMIN_EMPLOYEE_PAGE_KEY
+])
+
+// 記錄進入管理頁面時已驗證的使用者 ID。
+// 權限重新整理會暫時將 permissionReady / isSystemAdmin 清為 false，
+// 這期間不能卸載管理頁面，否則選取的人員也會被重設。
+const adminPageUserId = ref(null)
+
+// 確保權限快照真正屬於目前登入者，切換帳號／重新載入時一律 fail-closed。
+const isPermissionOwner = computed(() => Boolean(
+  currentUser.value?.id &&
+  permissionReady.value &&
+  permissionUserId.value === currentUser.value.id
+))
+
+const canViewMeeting = computed(() =>
+  isPermissionOwner.value && can('meetingArchive.view')
+)
+
+const isVerifiedAdmin = computed(() =>
+  Boolean(
+    currentUser.value?.id &&
+    permissionReady.value &&
+    isSystemAdmin.value &&
+    permissionUserId.value === currentUser.value.id
+  )
+)
+
+const adminToolGroup = {
+  label: '系統管理',
+  icon: 'admin',
+  description: '管理人員與部門，並查看有效權限',
+  tools: [
+    {
+      label: '人員管理',
+      value: ADMIN_EMPLOYEE_PAGE_KEY
+    },
+    {
+      label: '有效權限總覽',
+      value: ADMIN_PERMISSION_PAGE_KEY
+    },
+    {
+      label: '部門管理',
+      value: ADMIN_DEPARTMENT_PAGE_KEY
+    }
+  ]
+}
 
 
 /* ========================================
@@ -167,49 +234,52 @@ const allToolGroups = [
         ]
       }
     ]
+  },
+
+  {
+    label: '會議管理',
+    icon: 'meeting',
+    description: '會議紀錄與全文搜尋',
+    tools: [{ label: '會議紀錄', value: 'meetingArchive' }]
   }
 
   // 未來工具可以繼續加在這裡
 ]
 
 
-const protectedGroupLabels =
-    new Set([
-      '公文工具'
-    ])
+// Sidebar 是有效檢視權限的投影。沒有 view 權限的工具直接從資料結構移除，
+// 而非給 AppSidebar 傳 disabled:true (那會顯示灰色工具)。
+// 依序過濾「工具 → 區段 → 群組」，避免空標題出現在展開及收合選單。
+const toolGroups = computed(() => {
+  const groups = []
 
+  if (isPermissionOwner.value) {
+    for (const group of allToolGroups) {
+      if (Array.isArray(group.sections)) {
+        const sections = group.sections
+          .map(section => ({
+            ...section,
+            tools: (section.tools ?? []).filter(tool => canViewTool(tool.value))
+          }))
+          .filter(section => section.tools.length > 0)
 
-const protectedToolValues =
-    new Set([
-      'productManager',
-      'applicationBuilder',
-      'permitSearch',
-      'permitPdfParser'
-    ])
+        if (sections.length > 0) {
+          groups.push({ ...group, sections, locked: false })
+        }
+        continue
+      }
 
+      const tools = (group.tools ?? []).filter(tool => canViewTool(tool.value))
+      if (tools.length > 0) {
+        groups.push({ ...group, tools, locked: false })
+      }
+    }
+  }
 
-const toolGroups =
-    computed(() => {
-      return allToolGroups.map(
-          group => {
-            if (
-                !protectedGroupLabels.has(
-                    group.label
-                )
-            ) {
-              return group
-            }
-
-
-            return {
-              ...group,
-
-              locked:
-                  !currentUser.value
-            }
-          }
-      )
-    })
+  // 系統管理是獨立權限，不受業務工具的 view 權限影響。
+  if (isVerifiedAdmin.value) groups.push(adminToolGroup)
+  return groups
+})
 
 
 /* ========================================
@@ -234,6 +304,25 @@ function getGroupTools(
   return group.tools ?? []
 }
 
+
+const accessibleBusinessToolKeys = computed(() => new Set(
+  toolGroups.value
+    .filter(group => group !== adminToolGroup)
+    .flatMap(group => getGroupTools(group).map(tool => tool.value))
+))
+
+const canRenderCurrentBusinessTool = computed(() =>
+  isPermissionOwner.value && accessibleBusinessToolKeys.value.has(currentTool.value)
+)
+
+const firstAccessibleTool = computed(() => {
+  const firstBusinessTool = toolGroups.value
+    .filter(group => group !== adminToolGroup)
+    .flatMap(group => getGroupTools(group))[0]
+
+  // 即使管理員沒有業務權限，仍然可以進入系統管理。
+  return firstBusinessTool?.value ?? (isVerifiedAdmin.value ? ADMIN_EMPLOYEE_PAGE_KEY : '')
+})
 
 const currentToolInfo =
     computed(() => {
@@ -268,15 +357,30 @@ const currentToolLabel =
 
 const currentComponent =
     computed(() => {
-      if (
-          protectedToolValues.has(
-              currentTool.value
-          ) &&
-          !currentUser.value
-      ) {
-        return InventoryShopifyChecker
+      // 沒有有效 view 權限，不得掛載任何業務元件。
+      // 不只要在 Sidebar 隱藏入口，也要避免保留上一個帳號的舊頁面。
+      if (!ADMIN_PAGE_KEYS.has(currentTool.value) && !canRenderCurrentBusinessTool.value) {
+        return null
       }
 
+
+      // 只有已驗證的管理員，或同一位「曾經驗證成功」的管理員，
+      // 才維持管理頁面元件的掛載，避免重新整理權限時丟失人員選擇。
+      // 管理頁內仍以 verifiedAdmin 決定是否顯示資料，後端 RPC 也會再次授權。
+      if (ADMIN_PAGE_KEYS.has(currentTool.value)) {
+        const isSameAdminSession = Boolean(
+          currentUser.value?.id &&
+          adminPageUserId.value === currentUser.value.id
+        )
+
+        if (!isVerifiedAdmin.value && !isSameAdminSession) {
+          return null
+        }
+
+        if (currentTool.value === ADMIN_EMPLOYEE_PAGE_KEY) return AdminEmployeeManager
+        if (currentTool.value === ADMIN_DEPARTMENT_PAGE_KEY) return AdminDepartmentManager
+        return AdminPermissionOverview
+      }
 
       switch (
           currentTool.value
@@ -320,29 +424,76 @@ const currentComponent =
         case 'permitSearch':
           return PermitSearch
 
+        case 'meetingArchive':
+          return canViewMeeting.value ? MeetingArchive : null
+
         default:
-          return InventoryShopifyChecker
+          return null
       }
     })
 
+
+/* ========================================
+   All business routes: authorization
+======================================== */
+
+// 權限重新載入期間不渲染業務元件，但不急著切頁，避免 UI 閃爍。
+// 當新快照已確認後，如果原工具已被撤銷，轉到第一個仍有檢視權的工具。
+// 沒有任何工具可用時停在空白頁並顯示明確狀態，不可退回未授權的預設工具。
+watch(
+  [currentTool, () => currentUser.value?.id, permissionReady, permissionUserId, toolGroups],
+  () => {
+    if (ADMIN_PAGE_KEYS.has(currentTool.value)) return // 由原本管理員專用 watcher 處理
+
+    if (!currentUser.value?.id) {
+      if (currentTool.value) currentTool.value = ''
+      return
+    }
+    if (!isPermissionOwner.value) return
+
+    if (!canRenderCurrentBusinessTool.value) {
+      currentTool.value = firstAccessibleTool.value
+    }
+  },
+  { immediate: true }
+)
 
 /* ========================================
    Auth
 ======================================== */
 
 watch(
-    currentUser,
-    user => {
-      if (
-          !user &&
-          protectedToolValues.has(
-              currentTool.value
-          )
-      ) {
-        currentTool.value =
-            'inventoryShopify'
-      }
+  [currentTool, () => currentUser.value?.id, permissionReady, isSystemAdmin, permissionUserId],
+  () => {
+    if (!ADMIN_PAGE_KEYS.has(currentTool.value)) {
+      adminPageUserId.value = null
+      return
     }
+
+    const userId = currentUser.value?.id ?? null
+
+    // 登出或在管理頁面中切換為其他帳號：立即離開並清除頁面持有人。
+    if (!userId || (adminPageUserId.value && adminPageUserId.value !== userId)) {
+      adminPageUserId.value = null
+      currentTool.value = ''
+      return
+    }
+
+    if (isVerifiedAdmin.value) {
+      // 記下已成功驗證的管理員，之後重新載入權限時沿用同一頁面。
+      adminPageUserId.value = userId
+      return
+    }
+
+    // 只有「已完成查詢並確定不是管理員」才自動退出。
+    // permissionReady=false 包含讀取中與讀取失敗，不能用來判定權限被撤銷。
+    // 此時管理頁會暫停顯示受保護資料，不會向非管理員洩漏資訊。
+    if (permissionReady.value) {
+      adminPageUserId.value = null
+      currentTool.value = ''
+    }
+  },
+  { immediate: true }
 )
 
 
@@ -508,10 +659,24 @@ onMounted(() => {
       >
         <!-- Current Tool Component -->
 
+        <div
+            v-if="!ADMIN_PAGE_KEYS.has(currentTool) && !canRenderCurrentBusinessTool"
+            role="status"
+            class="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-600"
+        >
+          <template v-if="!currentUser?.id">
+            請先登入，才能使用 PTS 工具。
+          </template>
+          <template v-else-if="!isPermissionOwner">
+            正在確認您的功能權限，請稍候…
+          </template>
+          <template v-else>
+            目前沒有獲得任何可使用工具的檢視權限，請聯絡系統管理員。
+          </template>
+        </div>
         <component
-            :is="
-            currentComponent
-          "
+            v-else
+            :is="currentComponent"
         />
       </div>
     </main>

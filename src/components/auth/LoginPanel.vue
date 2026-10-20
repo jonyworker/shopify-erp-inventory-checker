@@ -1,12 +1,15 @@
 <script setup>
 import {
   ref,
+  nextTick,
   onMounted,
   onBeforeUnmount
 } from 'vue'
 
 import {
   signInWithEmail,
+  signInWithUsername,
+  activateEmployeeAccount,
   signOut
 } from '@/utils/auth/authService'
 
@@ -22,7 +25,7 @@ defineProps({
   }
 })
 
-const email = ref('')
+const account = ref('')
 const password = ref('')
 
 const isLoading = ref(false)
@@ -31,9 +34,128 @@ const isLoginOpen = ref(false)
 
 const loginPanelRef = ref(null)
 
+// 首次設定密碼與一般登入完全分離。尚未啟用的員工沒有登入 Session。
+const isActivationOpen = ref(false)
+const activationUsername = ref('')
+const activationCode = ref('')
+const activationPassword = ref('')
+const activationPasswordConfirm = ref('')
+const activationError = ref('')
+const activationSuccess = ref(false)
+const isActivating = ref(false)
+const showActivationCode = ref(false)
+const showActivationPassword = ref(false)
+const activationFirstInputRef = ref(null)
+const activationLaunchRef = ref(null)
+
+function clearActivationForm() {
+  activationCode.value = ''
+  activationPassword.value = ''
+  activationPasswordConfirm.value = ''
+  activationError.value = ''
+  showActivationCode.value = false
+  showActivationPassword.value = false
+}
+
+async function openActivation() {
+  if (isLoading.value || isActivating.value) return
+  activationUsername.value = account.value.includes('@') ? '' : account.value.trim().toLowerCase()
+  clearActivationForm()
+  activationSuccess.value = false
+  isLoginOpen.value = false
+  isActivationOpen.value = true
+  await nextTick()
+  activationFirstInputRef.value?.focus()
+}
+
+function closeActivation({ returnToLogin = false } = {}) {
+  if (isActivating.value) return
+  const successfulUsername = activationSuccess.value ? activationUsername.value.trim().toLowerCase() : ''
+  isActivationOpen.value = false
+  activationSuccess.value = false
+  activationUsername.value = ''
+  clearActivationForm()
+  if (returnToLogin) {
+    if (successfulUsername) account.value = successfulUsername
+    password.value = ''
+    errorMessage.value = ''
+    isLoginOpen.value = true
+    nextTick(() => activationLaunchRef.value?.focus())
+  }
+}
+
+function handleActivationEscape(event) {
+  if (event.key === 'Escape' && isActivationOpen.value && !isActivating.value) {
+    closeActivation()
+  }
+}
+
+function onActivationFieldChange() {
+  activationError.value = ''
+}
+
+async function handleActivation() {
+  if (isActivating.value || activationSuccess.value) return
+  activationError.value = ''
+
+  const username = activationUsername.value.trim().toLowerCase()
+  const temporaryPassword = activationCode.value.trim()
+  const newPassword = activationPassword.value
+  const confirmedPassword = activationPasswordConfirm.value
+
+  if (!/^[a-z][a-z0-9._-]{1,30}[a-z0-9]$/.test(username)) {
+    activationError.value = '請輸入有效的 Username（3–32 字元）'
+    return
+  }
+  if (!temporaryPassword) {
+    activationError.value = '請輸入管理員提供的一次性憑證'
+    return
+  }
+  if (!/^[A-HJ-NP-Za-km-z2-9]{24}$/.test(temporaryPassword)) {
+    activationError.value = '一次性憑證格式不正確，請確認是否完整複製 24 個字元'
+    return
+  }
+  if (
+    newPassword.length < 12 || newPassword.length > 128 ||
+    !/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword) ||
+    /[\x00-\x1f\x7f]/.test(newPassword)
+  ) {
+    activationError.value = '新密碼需為 12–128 字元，包含英文字母及數字，不能有控制字元'
+    return
+  }
+  if (newPassword === temporaryPassword) {
+    activationError.value = '新密碼不得與一次性憑證相同'
+    return
+  }
+  if (newPassword !== confirmedPassword) {
+    activationError.value = '兩次輸入的新密碼不一致'
+    return
+  }
+
+  try {
+    isActivating.value = true
+    await activateEmployeeAccount({
+      username,
+      temporaryPassword,
+      newPassword
+    })
+    // 不自動登入。使用者應另外用新密碼建立正式 Session。
+    activationSuccess.value = true
+    account.value = username
+    password.value = ''
+    clearActivationForm()
+  } catch (error) {
+    activationError.value = error?.message || '首次設定密碼失敗，請稍後再試'
+    // 不輸出一次性憑證、新密碼或任何 API 回應到 Console。
+  } finally {
+    isActivating.value = false
+  }
+}
+
 function handleClickOutside(event) {
   if (
       !isLoginOpen.value ||
+      isActivationOpen.value ||
       !loginPanelRef.value
   ) {
     return
@@ -50,6 +172,7 @@ onMounted(() => {
       'click',
       handleClickOutside
   )
+  document.addEventListener('keydown', handleActivationEscape)
 })
 
 onBeforeUnmount(() => {
@@ -57,13 +180,18 @@ onBeforeUnmount(() => {
       'click',
       handleClickOutside
   )
+  document.removeEventListener('keydown', handleActivationEscape)
 })
 
 async function handleLogin() {
+  if (isLoading.value) return
+
   errorMessage.value = ''
 
-  if (!email.value.trim()) {
-    errorMessage.value = '請輸入 Email'
+  const identifier = account.value.trim()
+
+  if (!identifier) {
+    errorMessage.value = '請輸入帳號或 Email'
     return
   }
 
@@ -75,19 +203,20 @@ async function handleLogin() {
   try {
     isLoading.value = true
 
-    await signInWithEmail(
-        email.value.trim(),
-        password.value
-    )
+    // 過渡期間：舊共用帳號仍可用 Email 登入。
+    // 新管理員或新員工則使用 Username，密碼驗證由 Supabase Auth 處理。
+    if (identifier.includes('@')) {
+      await signInWithEmail(identifier, password.value)
+    } else {
+      await signInWithUsername(identifier, password.value)
+    }
 
-    email.value = ''
+    account.value = ''
     password.value = ''
     isLoginOpen.value = false
   } catch (error) {
-    console.error(error)
-
-    errorMessage.value =
-        `登入失敗：${error.message}`
+    // 不在主控台輸出憑證或登入回應。
+    errorMessage.value = error?.message || '登入失敗，請稍後再試'
   } finally {
     isLoading.value = false
   }
@@ -450,7 +579,7 @@ async function handleLogout() {
             text-slate-500
           "
         >
-          登入後才能存取公文資料庫。
+          使用 PTS 帳號登入；舊共用帳號暫時仍可使用 Email。
         </p>
       </div>
 
@@ -463,13 +592,16 @@ async function handleLogout() {
               text-slate-600
             "
           >
-            Email
+            帳號或 Email
           </label>
 
           <input
-              v-model="email"
-              type="email"
-              autocomplete="email"
+              v-model="account"
+              type="text"
+              placeholder="admin 或原有 Email"
+              autocomplete="username"
+              autocapitalize="none"
+              spellcheck="false"
               class="
               w-full
               rounded-lg
@@ -550,7 +682,178 @@ async function handleLogout() {
         >
           {{ isLoading ? '登入中...' : '登入' }}
         </button>
+
+        <button
+            ref="activationLaunchRef"
+            type="button"
+            :disabled="isLoading"
+            class="w-full py-1.5 text-center text-xs font-medium text-slate-600 underline-offset-4 transition hover:text-slate-900 hover:underline disabled:opacity-50"
+            @click="openActivation"
+        >
+          第一次使用 PTS？設定個人密碼
+        </button>
       </div>
     </div>
   </div>
+
+  <!-- 獨立 Modal：四個輸入欄位避免讓側邊小視窗超出螢幕。 -->
+  <Teleport to="body">
+    <div
+        v-if="isActivationOpen && !currentUser"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 px-4 py-6"
+        role="presentation"
+        @click.self="closeActivation()"
+    >
+      <section
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pts-activation-title"
+          class="w-full max-w-[440px] max-h-[calc(100dvh-3rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6"
+      >
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">PTS / 帳號啟用</p>
+            <h2 id="pts-activation-title" class="mt-1 text-lg font-semibold text-slate-950">
+              {{ activationSuccess ? '首次設定完成' : '首次設定個人密碼' }}
+            </h2>
+            <p class="mt-1.5 text-xs leading-5 text-slate-500">
+              {{ activationSuccess
+                ? '你的個人帳號已完成啟用，現在可使用新密碼登入。'
+                : '輸入管理員提供的一次性憑證，並設定只有你知道的新密碼。' }}
+            </p>
+          </div>
+          <button
+              type="button"
+              aria-label="關閉首次設定視窗"
+              :disabled="isActivating"
+              class="rounded-lg p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50"
+              @click="closeActivation()"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" class="h-5 w-5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+
+        <template v-if="activationSuccess">
+          <div class="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-900" role="status">
+            帳號啟用成功。請使用 Username 和剛設定的新密碼登入 PTS。
+          </div>
+          <button
+              type="button"
+              class="mt-5 w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+              @click="closeActivation({ returnToLogin: true })"
+          >
+            返回登入
+          </button>
+        </template>
+
+        <form v-else class="mt-5 space-y-3.5" novalidate @submit.prevent="handleActivation">
+          <div>
+            <label for="pts-activate-username" class="mb-1.5 block text-xs font-semibold text-slate-700">Username</label>
+            <input
+                id="pts-activate-username"
+                ref="activationFirstInputRef"
+                v-model="activationUsername"
+                type="text"
+                maxlength="32"
+                autocomplete="username"
+                autocapitalize="none"
+                spellcheck="false"
+                placeholder="例：xiaoming"
+                :disabled="isActivating"
+                class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:opacity-50"
+                @input="onActivationFieldChange"
+            >
+          </div>
+          <div>
+            <label for="pts-activate-code" class="mb-1.5 block text-xs font-semibold text-slate-700">一次性憑證</label>
+            <div class="flex gap-2">
+              <input
+                  id="pts-activate-code"
+                  v-model="activationCode"
+                  :type="showActivationCode ? 'text' : 'password'"
+                  maxlength="24"
+                  autocomplete="off"
+                  autocapitalize="none"
+                  spellcheck="false"
+                  placeholder="管理員提供的 24 字元憑證"
+                  :disabled="isActivating"
+                  class="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:opacity-50"
+                  @input="onActivationFieldChange"
+              >
+              <button
+                  type="button"
+                  :disabled="isActivating"
+                  :aria-label="showActivationCode ? '隱藏憑證' : '顯示憑證'"
+                  class="shrink-0 rounded-lg border border-slate-200 px-3 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  @click="showActivationCode = !showActivationCode"
+              >
+                {{ showActivationCode ? '隱藏' : '顯示' }}
+              </button>
+            </div>
+            <p class="mt-1 text-xs text-slate-500">由管理員建立，只能使用一次，有效期限為 30 天。</p>
+          </div>
+          <div>
+            <label for="pts-activate-password" class="mb-1.5 block text-xs font-semibold text-slate-700">新密碼</label>
+            <div class="flex gap-2">
+              <input
+                  id="pts-activate-password"
+                  v-model="activationPassword"
+                  :type="showActivationPassword ? 'text' : 'password'"
+                  autocomplete="new-password"
+                  :disabled="isActivating"
+                  placeholder="至少 12 字元，包含英文字母與數字"
+                  class="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:opacity-50"
+                  @input="onActivationFieldChange"
+              >
+              <button
+                  type="button"
+                  :disabled="isActivating"
+                  :aria-label="showActivationPassword ? '隱藏新密碼' : '顯示新密碼'"
+                  class="shrink-0 rounded-lg border border-slate-200 px-3 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  @click="showActivationPassword = !showActivationPassword"
+              >
+                {{ showActivationPassword ? '隱藏' : '顯示' }}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label for="pts-activate-confirm" class="mb-1.5 block text-xs font-semibold text-slate-700">再次輸入新密碼</label>
+            <input
+                id="pts-activate-confirm"
+                v-model="activationPasswordConfirm"
+                :type="showActivationPassword ? 'text' : 'password'"
+                autocomplete="new-password"
+                :disabled="isActivating"
+                placeholder="再次輸入新密碼"
+                class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:opacity-50"
+                @input="onActivationFieldChange"
+            >
+          </div>
+          <div v-if="activationError" role="alert" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs leading-5 text-red-700">
+            {{ activationError }}
+          </div>
+          <p class="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">
+            安全提醒：首次設定完成後，一次性憑證會失效。請勿將新密碼分享給管理員或其他同事。
+          </p>
+          <button
+              type="submit"
+              :disabled="isActivating"
+              class="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60"
+          >
+            {{ isActivating ? '正在安全啟用帳號...' : '設定密碼並啟用帳號' }}
+          </button>
+          <button
+              type="button"
+              :disabled="isActivating"
+              class="w-full py-1 text-xs font-medium text-slate-500 transition hover:text-slate-900 disabled:opacity-50"
+              @click="closeActivation({ returnToLogin: true })"
+          >
+            返回一般登入
+          </button>
+        </form>
+      </section>
+    </div>
+  </Teleport>
 </template>

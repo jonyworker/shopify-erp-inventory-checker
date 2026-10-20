@@ -25,37 +25,28 @@
 
 alter table public.product_assets
     add column if not exists original_file_name text;
-
 alter table public.product_assets
     add column if not exists mime_type text;
-
 alter table public.product_assets
     add column if not exists file_size bigint;
-
-
 -- =========================================================
 -- File Size Constraint
 -- =========================================================
 
 alter table public.product_assets
 drop constraint if exists product_assets_file_size_check;
-
 alter table public.product_assets
     add constraint product_assets_file_size_check
         check (
             file_size is null
                 or file_size >= 0
             );
-
-
 -- =========================================================
 -- Asset Type Constraint
 -- =========================================================
 
 alter table public.product_assets
 drop constraint if exists product_assets_asset_type_check;
-
-
 alter table public.product_assets
     add constraint product_assets_asset_type_check
         check (
@@ -76,8 +67,6 @@ alter table public.product_assets
                            'energy_report'
                 )
             );
-
-
 -- =========================================================
 -- Storage Bucket Configuration
 --

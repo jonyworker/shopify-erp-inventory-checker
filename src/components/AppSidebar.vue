@@ -41,86 +41,68 @@ const currentTool = computed({
 
 
 const expandedGroups =
-    ref({})
+  ref({})
 
 
 function ensureGroupStates() {
   for (
-      const group
-      of props.groups
-      ) {
+    const group
+    of props.groups
+    ) {
     if (
-        expandedGroups.value[
-            group.label
-            ] === undefined
+      expandedGroups.value[
+        group.label
+        ] === undefined
     ) {
       expandedGroups.value[
-          group.label
-          ] = true
+        group.label
+        ] = false
     }
   }
 }
 
 
 function isGroupExpanded(
-    group
+  group
 ) {
   return (
-      expandedGroups.value[
-          group.label
-          ] !== false
+    expandedGroups.value[
+      group.label
+      ] !== false
   )
 }
 
 
 function toggleGroup(
-    group
+  group
 ) {
   if (
-      group.locked
+    group.locked
   ) {
     return
   }
 
 
   expandedGroups.value[
-      group.label
-      ] =
-      !isGroupExpanded(
-          group
-      )
-}
-
-
-function openActiveGroup() {
-  for (
-      const group
-      of props.groups
-      ) {
-    if (
-        groupHasActiveTool(
-            group
-        )
-    ) {
-      expandedGroups.value[
-          group.label
-          ] = true
-    }
-  }
+    group.label
+    ] =
+    !isGroupExpanded(
+      group
+    )
 }
 
 
 function getGroupTools(
-    group
+  group
 ) {
   if (
-      Array.isArray(
-          group.sections
-      )
+    Array.isArray(
+      group.sections
+    )
   ) {
     return group.sections.flatMap(
-        section =>
-            section.tools ?? []
+      section =>
+        section.tools ?? []
     )
   }
 
@@ -130,16 +112,16 @@ function getGroupTools(
 
 
 function groupHasActiveTool(
-    group
+  group
 ) {
   return getGroupTools(
-      group
+    group
   )
-      .some(
-          tool =>
-              tool.value ===
-              currentTool.value
-      )
+    .some(
+      tool =>
+        tool.value ===
+        currentTool.value
+    )
 }
 
 function selectTool(tool) {
@@ -167,37 +149,28 @@ function handleEscape(event) {
 }
 
 watch(
-    () => props.groups,
-    () => {
-      ensureGroupStates()
-      openActiveGroup()
-    },
-    {
-      immediate: true,
-      deep: true
-    }
+  () => props.groups,
+  () => {
+    ensureGroupStates()
+  },
+  {
+    immediate: true,
+    deep: true
+  }
 )
 
 
 watch(
-    () => currentTool.value,
-    () => {
-      openActiveGroup()
+  () => props.mobileOpen,
+  (isOpen) => {
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape)
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.removeEventListener('keydown', handleEscape)
+      document.body.style.overflow = ''
     }
-)
-
-
-watch(
-    () => props.mobileOpen,
-    (isOpen) => {
-      if (isOpen) {
-        document.addEventListener('keydown', handleEscape)
-        document.body.style.overflow = 'hidden'
-      } else {
-        document.removeEventListener('keydown', handleEscape)
-        document.body.style.overflow = ''
-      }
-    }
+  }
 )
 
 onBeforeUnmount(() => {
@@ -212,7 +185,7 @@ onBeforeUnmount(() => {
          Desktop Sidebar
     ========================================= -->
     <aside
-        class="
+      class="
         fixed inset-y-0 left-0 z-40
         hidden flex-col
         border-r border-slate-200
@@ -220,21 +193,21 @@ onBeforeUnmount(() => {
         transition-[width] duration-200
         lg:flex
       "
-        :class="collapsed ? 'w-[72px]' : 'w-72'"
+      :class="collapsed ? 'w-[72px]' : 'w-72'"
     >
       <!-- Brand -->
       <div
-          class="
+        class="
           flex h-[96px]
           items-center
           border-b border-slate-200
           px-4
         "
-          :class="collapsed ? 'justify-center' : 'justify-between'"
+        :class="collapsed ? 'justify-center' : 'justify-between'"
       >
         <div v-if="!collapsed">
           <p
-              class="
+            class="
               text-xs font-bold uppercase
               tracking-[0.22em]
               text-slate-400
@@ -244,7 +217,7 @@ onBeforeUnmount(() => {
           </p>
 
           <h1
-              class="
+            class="
               mt-1
               text-xl font-bold
               tracking-tight
@@ -256,8 +229,8 @@ onBeforeUnmount(() => {
         </div>
 
         <span
-            v-else
-            class="
+          v-else
+          class="
             text-sm font-black
             tracking-tight
             text-slate-900
@@ -267,9 +240,9 @@ onBeforeUnmount(() => {
         </span>
 
         <button
-            v-if="!collapsed"
-            type="button"
-            class="
+          v-if="!collapsed"
+          type="button"
+          class="
             flex h-8 w-8
             items-center justify-center
             rounded-lg
@@ -278,8 +251,8 @@ onBeforeUnmount(() => {
             hover:bg-slate-100
             hover:text-slate-900
           "
-            title="收合側邊欄"
-            @click="toggleCollapsed"
+          title="收合側邊欄"
+          @click="toggleCollapsed"
         >
           ‹
         </button>
@@ -287,9 +260,9 @@ onBeforeUnmount(() => {
 
       <!-- Collapsed Toggle -->
       <button
-          v-if="collapsed"
-          type="button"
-          class="
+        v-if="collapsed"
+        type="button"
+        class="
           mx-auto mt-4
           flex h-9 w-9
           items-center justify-center
@@ -299,27 +272,27 @@ onBeforeUnmount(() => {
           hover:bg-slate-100
           hover:text-slate-900
         "
-          title="展開側邊欄"
-          @click="toggleCollapsed"
+        title="展開側邊欄"
+        @click="toggleCollapsed"
       >
         ›
       </button>
 
       <!-- Navigation -->
       <nav
-          class="flex-1 overflow-y-auto"
-          :class="collapsed ? 'px-2 py-4' : 'px-4 py-5'"
+        class="flex-1 overflow-y-auto"
+        :class="collapsed ? 'px-2 py-4' : 'px-4 py-5'"
       >
         <div
-            v-for="group in groups"
-            :key="group.label"
-            class="relative mb-6"
+          v-for="group in groups"
+          :key="group.label"
+          class="relative mb-6"
         >
           <!-- Expanded -->
           <template v-if="!collapsed">
             <button
-                type="button"
-                class="
+              type="button"
+              class="
                 mb-2
                 flex
                 w-full
@@ -334,7 +307,7 @@ onBeforeUnmount(() => {
                 hover:bg-slate-50
                 hover:text-slate-600
               "
-                @click="
+              @click="
                 toggleGroup(
                   group
                 )
@@ -343,7 +316,7 @@ onBeforeUnmount(() => {
               <ToolGroupIcon :type="group.icon" />
 
               <span
-                  class="
+                class="
                   min-w-0
                   flex-1
                   text-xs
@@ -355,10 +328,10 @@ onBeforeUnmount(() => {
               </span>
 
               <span
-                  v-if="
+                v-if="
                   group.locked
                 "
-                  class="
+                class="
                   rounded-full
                   bg-amber-50
                   px-2
@@ -373,13 +346,13 @@ onBeforeUnmount(() => {
               </span>
 
               <span
-                  v-else
-                  class="
+                v-else
+                class="
                   text-sm
                   transition-transform
                   duration-200
                 "
-                  :class="
+                :class="
                   isGroupExpanded(
                     group
                   )
@@ -392,31 +365,31 @@ onBeforeUnmount(() => {
             </button>
 
             <div
-                v-if="
+              v-if="
                 group.sections?.length
               "
-                v-show="
+              v-show="
                 !group.locked &&
                 isGroupExpanded(
                   group
                 )
               "
-                class="
+              class="
                 space-y-5
                 pl-7
               "
             >
               <section
-                  v-for="
+                v-for="
                   section
                   in group.sections
                 "
-                  :key="
+                :key="
                   section.label
                 "
               >
                 <p
-                    class="
+                  class="
                     mb-1.5
                     px-3
                     py-1.5
@@ -430,23 +403,23 @@ onBeforeUnmount(() => {
                 </p>
 
                 <div
-                    class="
+                  class="
                     space-y-1
                   "
                 >
                   <button
-                      v-for="
+                    v-for="
                       tool
                       in section.tools
                     "
-                      :key="
+                    :key="
                       tool.value
                     "
-                      type="button"
-                      :disabled="
+                    type="button"
+                    :disabled="
                       tool.disabled
                     "
-                      class="
+                    class="
                       flex w-full
                       items-center
                       rounded-xl
@@ -454,7 +427,7 @@ onBeforeUnmount(() => {
                       text-left text-sm
                       transition
                     "
-                      :class="[
+                    :class="[
                       currentTool === tool.value
                         ? 'bg-slate-900 font-medium text-white shadow-sm'
                         : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950',
@@ -463,14 +436,14 @@ onBeforeUnmount(() => {
                         ? 'cursor-not-allowed opacity-40'
                         : ''
                     ]"
-                      @click="
+                    @click="
                       selectTool(
                         tool
                       )
                     "
                   >
                     <span
-                        class="
+                      class="
                         min-w-0
                         flex-1
                       "
@@ -479,11 +452,11 @@ onBeforeUnmount(() => {
                     </span>
 
                     <span
-                        v-if="
+                      v-if="
                         currentTool ===
                         tool.value
                       "
-                        class="
+                      class="
                         ml-3
                         h-1.5 w-1.5
                         shrink-0
@@ -497,31 +470,31 @@ onBeforeUnmount(() => {
             </div>
 
             <div
-                v-else
-                v-show="
+              v-else
+              v-show="
                 !group.locked &&
                 isGroupExpanded(
                   group
                 )
               "
-                class="
+              class="
                 space-y-1
                 pl-7
               "
             >
               <button
-                  v-for="
+                v-for="
                   tool
                   in group.tools
                 "
-                  :key="
+                :key="
                   tool.value
                 "
-                  type="button"
-                  :disabled="
+                type="button"
+                :disabled="
                   tool.disabled
                 "
-                  class="
+                class="
                   flex w-full
                   items-center
                   rounded-xl
@@ -529,7 +502,7 @@ onBeforeUnmount(() => {
                   text-left text-sm
                   transition
                 "
-                  :class="[
+                :class="[
                   currentTool === tool.value
                     ? 'bg-slate-900 font-medium text-white shadow-sm'
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950',
@@ -538,14 +511,14 @@ onBeforeUnmount(() => {
                     ? 'cursor-not-allowed opacity-40'
                     : ''
                 ]"
-                  @click="
+                @click="
                   selectTool(
                     tool
                   )
                 "
               >
                 <span
-                    class="
+                  class="
                     min-w-0
                     flex-1
                   "
@@ -554,11 +527,11 @@ onBeforeUnmount(() => {
                 </span>
 
                 <span
-                    v-if="
+                  v-if="
                     currentTool ===
                     tool.value
                   "
-                    class="
+                  class="
                     ml-3
                     h-1.5 w-1.5
                     shrink-0
@@ -574,8 +547,8 @@ onBeforeUnmount(() => {
           <template v-else>
             <div class="group relative flex justify-center">
               <button
-                  type="button"
-                  class="
+                type="button"
+                class="
     flex h-11 w-11
     items-center justify-center
     rounded-xl
@@ -584,14 +557,14 @@ onBeforeUnmount(() => {
     hover:bg-slate-100
     hover:text-slate-950
   "
-                  :class="
+                :class="
                   groupHasActiveTool(
                     group
                   )
                     ? 'bg-slate-900 text-white hover:bg-slate-900 hover:text-white'
                     : ''
                 "
-                  :title="
+                :title="
                   group.locked
                     ? `${group.label}｜未登入`
                     : group.label
@@ -602,7 +575,7 @@ onBeforeUnmount(() => {
 
               <!-- Flyout -->
               <div
-                  class="
+                class="
                   invisible absolute
                   left-full top-0 z-50
                   ml-2 w-64
@@ -620,7 +593,7 @@ onBeforeUnmount(() => {
                 "
               >
                 <div
-                    class="
+                  class="
                     flex
                     items-center
                     gap-2
@@ -630,7 +603,7 @@ onBeforeUnmount(() => {
                   "
                 >
                   <p
-                      class="
+                    class="
                       min-w-0
                       flex-1
                       text-xs
@@ -642,10 +615,10 @@ onBeforeUnmount(() => {
                   </p>
 
                   <span
-                      v-if="
+                    v-if="
                       group.locked
                     "
-                      class="
+                    class="
                       rounded-full
                       bg-amber-50
                       px-2
@@ -660,10 +633,10 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div
-                    v-if="
+                  v-if="
                     group.locked
                   "
-                    class="
+                  class="
                     rounded-lg
                     bg-slate-50
                     px-3
@@ -677,25 +650,25 @@ onBeforeUnmount(() => {
                 </div>
 
                 <template
-                    v-else-if="
+                  v-else-if="
                     group.sections?.length
                   "
                 >
                   <section
-                      v-for="
+                    v-for="
                       section
                       in group.sections
                     "
-                      :key="
+                    :key="
                       section.label
                     "
-                      class="
+                    class="
                       mb-3
                       last:mb-0
                     "
                   >
                     <p
-                        class="
+                      class="
                         px-3
                         pb-1.5
                         pt-1
@@ -709,18 +682,18 @@ onBeforeUnmount(() => {
                     </p>
 
                     <button
-                        v-for="
+                      v-for="
                         tool
                         in section.tools
                       "
-                        :key="
+                      :key="
                         tool.value
                       "
-                        type="button"
-                        :disabled="
+                      type="button"
+                      :disabled="
                         tool.disabled
                       "
-                        class="
+                      class="
                         flex w-full
                         items-center
                         rounded-lg
@@ -728,7 +701,7 @@ onBeforeUnmount(() => {
                         text-left text-sm
                         transition
                       "
-                        :class="[
+                      :class="[
                         currentTool === tool.value
                           ? 'bg-slate-900 text-white'
                           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950',
@@ -737,7 +710,7 @@ onBeforeUnmount(() => {
                           ? 'cursor-not-allowed opacity-40'
                           : ''
                       ]"
-                        @click="
+                      @click="
                         selectTool(
                           tool
                         )
@@ -750,18 +723,18 @@ onBeforeUnmount(() => {
 
                 <template v-else>
                   <button
-                      v-for="
+                    v-for="
                       tool
                       in group.tools
                     "
-                      :key="
+                    :key="
                       tool.value
                     "
-                      type="button"
-                      :disabled="
+                    type="button"
+                    :disabled="
                       tool.disabled
                     "
-                      class="
+                    class="
                       flex w-full
                       items-center
                       rounded-lg
@@ -769,7 +742,7 @@ onBeforeUnmount(() => {
                       text-left text-sm
                       transition
                     "
-                      :class="[
+                    :class="[
                       currentTool === tool.value
                         ? 'bg-slate-900 text-white'
                         : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950',
@@ -778,7 +751,7 @@ onBeforeUnmount(() => {
                         ? 'cursor-not-allowed opacity-40'
                         : ''
                     ]"
-                      @click="
+                    @click="
                       selectTool(
                         tool
                       )
@@ -795,12 +768,12 @@ onBeforeUnmount(() => {
 
       <!-- Account -->
       <div
-          class="
+        class="
           shrink-0
           border-t
           border-slate-200
         "
-          :class="collapsed ? 'p-3' : 'p-4'"
+        :class="collapsed ? 'p-3' : 'p-4'"
       >
         <LoginPanel :collapsed="collapsed" />
       </div>
@@ -812,8 +785,8 @@ onBeforeUnmount(() => {
     <Teleport to="body">
       <Transition name="drawer">
         <div
-            v-if="mobileOpen"
-            class="
+          v-if="mobileOpen"
+          class="
             fixed inset-0
             z-[100]
             lg:hidden
@@ -821,17 +794,17 @@ onBeforeUnmount(() => {
         >
           <!-- Overlay -->
           <div
-              class="
+            class="
               absolute inset-0
               bg-slate-950/40
               backdrop-blur-[1px]
             "
-              @click="closeMobileDrawer"
+            @click="closeMobileDrawer"
           />
 
           <!-- Drawer -->
           <aside
-              class="
+            class="
               absolute inset-y-0 left-0
               flex
               w-[min(320px,85vw)]
@@ -842,7 +815,7 @@ onBeforeUnmount(() => {
           >
             <!-- Drawer Header -->
             <div
-                class="
+              class="
                 flex h-20
                 shrink-0
                 items-center
@@ -854,7 +827,7 @@ onBeforeUnmount(() => {
             >
               <div>
                 <p
-                    class="
+                  class="
                     text-[10px]
                     font-bold
                     uppercase
@@ -866,7 +839,7 @@ onBeforeUnmount(() => {
                 </p>
 
                 <h2
-                    class="
+                  class="
                     mt-0.5
                     text-lg
                     font-bold
@@ -879,8 +852,8 @@ onBeforeUnmount(() => {
               </div>
 
               <button
-                  type="button"
-                  class="
+                type="button"
+                class="
                   flex h-9 w-9
                   items-center justify-center
                   rounded-lg
@@ -889,20 +862,20 @@ onBeforeUnmount(() => {
                   hover:bg-slate-100
                   hover:text-slate-900
                 "
-                  aria-label="關閉選單"
-                  @click="closeMobileDrawer"
+                aria-label="關閉選單"
+                @click="closeMobileDrawer"
               >
                 <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    class="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  class="h-5 w-5"
                 >
                   <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.8"
-                      d="M6 18 18 6M6 6l12 12"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.8"
+                    d="M6 18 18 6M6 6l12 12"
                   />
                 </svg>
               </button>
@@ -910,20 +883,20 @@ onBeforeUnmount(() => {
 
             <!-- Drawer Navigation -->
             <nav
-                class="
+              class="
                 flex-1
                 overflow-y-auto
                 px-4 py-5
               "
             >
               <div
-                  v-for="group in groups"
-                  :key="group.label"
-                  class="mb-6"
+                v-for="group in groups"
+                :key="group.label"
+                class="mb-6"
               >
                 <button
-                    type="button"
-                    class="
+                  type="button"
+                  class="
                     mb-2
                     flex
                     w-full
@@ -938,7 +911,7 @@ onBeforeUnmount(() => {
                     hover:bg-slate-50
                     hover:text-slate-600
                   "
-                    @click="
+                  @click="
                     toggleGroup(
                       group
                     )
@@ -947,7 +920,7 @@ onBeforeUnmount(() => {
                   <ToolGroupIcon :type="group.icon" />
 
                   <span
-                      class="
+                    class="
                       min-w-0
                       flex-1
                       text-xs
@@ -959,10 +932,10 @@ onBeforeUnmount(() => {
                   </span>
 
                   <span
-                      v-if="
+                    v-if="
                       group.locked
                     "
-                      class="
+                    class="
                       rounded-full
                       bg-amber-50
                       px-2
@@ -977,13 +950,13 @@ onBeforeUnmount(() => {
                   </span>
 
                   <span
-                      v-else
-                      class="
+                    v-else
+                    class="
                       text-sm
                       transition-transform
                       duration-200
                     "
-                      :class="
+                    :class="
                       isGroupExpanded(
                         group
                       )
@@ -996,30 +969,30 @@ onBeforeUnmount(() => {
                 </button>
 
                 <div
-                    v-if="
+                  v-if="
                     group.sections?.length
                   "
-                    v-show="
+                  v-show="
                     !group.locked &&
                     isGroupExpanded(
                       group
                     )
                   "
-                    class="
+                  class="
                     space-y-5
                   "
                 >
                   <section
-                      v-for="
+                    v-for="
                       section
                       in group.sections
                     "
-                      :key="
+                    :key="
                       section.label
                     "
                   >
                     <p
-                        class="
+                      class="
                         mb-1.5
                         px-3
                         py-1.5
@@ -1033,23 +1006,23 @@ onBeforeUnmount(() => {
                     </p>
 
                     <div
-                        class="
+                      class="
                         space-y-1
                       "
                     >
                       <button
-                          v-for="
+                        v-for="
                           tool
                           in section.tools
                         "
-                          :key="
+                        :key="
                           tool.value
                         "
-                          type="button"
-                          :disabled="
+                        type="button"
+                        :disabled="
                           tool.disabled
                         "
-                          class="
+                        class="
                           flex w-full
                           items-center
                           rounded-xl
@@ -1058,7 +1031,7 @@ onBeforeUnmount(() => {
                           text-sm
                           transition
                         "
-                          :class="[
+                        :class="[
                           currentTool === tool.value
                             ? 'bg-slate-900 font-medium text-white shadow-sm'
                             : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950',
@@ -1067,14 +1040,14 @@ onBeforeUnmount(() => {
                             ? 'cursor-not-allowed opacity-40'
                             : ''
                         ]"
-                          @click="
+                        @click="
                           selectTool(
                             tool
                           )
                         "
                       >
                         <span
-                            class="
+                          class="
                             min-w-0
                             flex-1
                           "
@@ -1083,11 +1056,11 @@ onBeforeUnmount(() => {
                         </span>
 
                         <span
-                            v-if="
+                          v-if="
                             currentTool ===
                             tool.value
                           "
-                            class="
+                          class="
                             ml-3
                             h-1.5 w-1.5
                             shrink-0
@@ -1101,30 +1074,30 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div
-                    v-else
-                    v-show="
+                  v-else
+                  v-show="
                     !group.locked &&
                     isGroupExpanded(
                       group
                     )
                   "
-                    class="
+                  class="
                     space-y-1
                   "
                 >
                   <button
-                      v-for="
+                    v-for="
                       tool
                       in group.tools
                     "
-                      :key="
+                    :key="
                       tool.value
                     "
-                      type="button"
-                      :disabled="
+                    type="button"
+                    :disabled="
                       tool.disabled
                     "
-                      class="
+                    class="
                       flex w-full
                       items-center
                       rounded-xl
@@ -1133,7 +1106,7 @@ onBeforeUnmount(() => {
                       text-sm
                       transition
                     "
-                      :class="[
+                    :class="[
                       currentTool === tool.value
                         ? 'bg-slate-900 font-medium text-white shadow-sm'
                         : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950',
@@ -1142,14 +1115,14 @@ onBeforeUnmount(() => {
                         ? 'cursor-not-allowed opacity-40'
                         : ''
                     ]"
-                      @click="
+                    @click="
                       selectTool(
                         tool
                       )
                     "
                   >
                     <span
-                        class="
+                      class="
                         min-w-0
                         flex-1
                       "
@@ -1158,11 +1131,11 @@ onBeforeUnmount(() => {
                     </span>
 
                     <span
-                        v-if="
+                      v-if="
                         currentTool ===
                         tool.value
                       "
-                        class="
+                      class="
                         ml-3
                         h-1.5 w-1.5
                         shrink-0
@@ -1177,7 +1150,7 @@ onBeforeUnmount(() => {
 
             <!-- Drawer Account -->
             <div
-                class="
+              class="
                 shrink-0
                 border-t
                 border-slate-200

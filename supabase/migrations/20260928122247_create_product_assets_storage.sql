@@ -13,8 +13,6 @@ values (
            false
        )
     on conflict (id) do nothing;
-
-
 -- =========================================================
 -- Storage RLS Policies
 -- =========================================================
@@ -28,8 +26,6 @@ for select
                using (
                bucket_id = 'product-assets'
                );
-
-
 -- 登入使用者可以上傳產品圖片
 
 create policy "Authenticated users can upload product assets"
@@ -39,8 +35,6 @@ to authenticated
 with check (
     bucket_id = 'product-assets'
 );
-
-
 -- 登入使用者可以更新產品圖片
 
 create policy "Authenticated users can update product assets"
@@ -53,8 +47,6 @@ for update
     with check (
                       bucket_id = 'product-assets'
                       );
-
-
 -- 登入使用者可以刪除產品圖片
 
 create policy "Authenticated users can delete product assets"

@@ -101,6 +101,23 @@ defineProps({
     <path d="m9 12 2 2 4-4" />
   </svg>
 
+  <!-- 系統管理 -->
+  <svg
+      v-else-if="type === 'admin'"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      class="h-5 w-5"
+      aria-hidden="true"
+  >
+    <path d="M12 2.75 20 7v10l-8 4.25L4 17V7L12 2.75Z" />
+    <circle cx="12" cy="10.5" r="2.2" />
+    <path d="M8.5 16.5c.5-1.7 1.7-2.55 3.5-2.55s3 .85 3.5 2.55" />
+  </svg>
+
   <!-- fallback -->
   <svg
       v-else

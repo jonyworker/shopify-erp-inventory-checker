@@ -13,8 +13,6 @@
 
 alter table public.products
     alter column sku drop not null;
-
-
 -- =========================================================
 -- 移除 SKU UNIQUE constraint
 --

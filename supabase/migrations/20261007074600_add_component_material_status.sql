@@ -11,8 +11,6 @@
 
 alter table public.product_component_specs
     add column material_status text;
-
-
 -- =========================================================
 -- 將既有 is_metal 資料轉入 material_status
 -- =========================================================
@@ -28,8 +26,6 @@ set material_status =
 
             else null
             end;
-
-
 -- =========================================================
 -- Constraint
 -- =========================================================
@@ -44,7 +40,5 @@ alter table public.product_component_specs
                                        'not_applicable'
                 )
             );
-
-
 comment on column public.product_component_specs.material_status
 is '部位材質狀態：metal=金屬、non_metal=非金屬、not_applicable=無此部件';

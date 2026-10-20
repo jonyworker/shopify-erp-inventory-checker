@@ -66,8 +66,6 @@ create table public.products (
                                              or nullif(trim(part_category_other), '') is not null
                                          )
 );
-
-
 -- =========================================================
 -- Product Component Specs
 --
@@ -108,8 +106,6 @@ create table public.product_component_specs (
                                                             component_type
                                                         )
 );
-
-
 -- =========================================================
 -- Product Assets
 --
@@ -154,8 +150,6 @@ create table public.product_assets (
                                                sort_order >= 0
                                                )
 );
-
-
 -- =========================================================
 -- updated_at function
 -- =========================================================
@@ -169,8 +163,6 @@ begin
 return new;
 end;
 $$;
-
-
 -- =========================================================
 -- updated_at triggers
 -- =========================================================
@@ -180,8 +172,6 @@ create trigger products_set_updated_at
     on public.products
     for each row
     execute function public.set_updated_at();
-
-
 create trigger product_component_specs_set_updated_at
     before update
     on public.product_component_specs
