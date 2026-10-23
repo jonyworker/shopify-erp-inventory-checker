@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import MeetingParticipantPicker from './MeetingParticipantPicker.vue'
 import { currentUser, isAuthReady } from '@/stores/authState'
 import { supabase } from '@/lib/supabaseClient'
 import {
@@ -21,6 +22,55 @@ const selectedId = ref(null)
 const editing = ref(false)
 const isNew = ref(false)
 const draft = ref(emptyDraft())
+const participantIds = ref([])
+const participantPeople = ref([])
+const peopleLoading = ref(false)
+const peopleError = ref('')
+let peopleVersion = 0
+
+// UI 第一階段：選擇器以 user_id 維持選擇狀態；資料庫仍使用原本的 attendees 文字欄位。
+// 本階段不宣稱已經實施依與會者限制閱讀的 RLS。
+async function fetchParticipantPeople() {
+  if (!canUse.value) return
+  const version = ++peopleVersion
+  const ownerId = currentUser.value?.id
+  peopleLoading.value = true
+  peopleError.value = ''
+  try {
+    // 透過後端受控 RPC 取得候選人；人員管理資料表不開放前端直接 SELECT。
+    const { data, error: rpcError } = await supabase.rpc('pts_meeting_participant_candidates')
+    if (version !== peopleVersion || !canUse.value || currentUser.value?.id !== ownerId) return
+    if (rpcError) throw rpcError
+    if (!Array.isArray(data)) throw new Error('人員清單回傳格式不正確')
+    participantPeople.value = data.map(person => ({
+      ...person,
+      regions: Array.isArray(person.regions) ? person.regions : []
+    }))
+  } catch (e) {
+    if (version === peopleVersion && canUse.value && currentUser.value?.id === ownerId) {
+      peopleError.value = `無法讀取人員清單：${e?.message ?? '請確認已部署與會人員查詢 RPC'}`
+      participantPeople.value = []
+    }
+  } finally {
+    if (version === peopleVersion) peopleLoading.value = false
+  }
+}
+
+function matchLegacyAttendees(text) {
+  const names = String(text ?? '').split(/[、,，;；\n]+/).map(v => v.trim()).filter(Boolean)
+  return participantPeople.value.filter(p => names.includes(p.display_name)).map(p => p.user_id)
+}
+watch(participantPeople, () => {
+  if (editing.value) participantIds.value = matchLegacyAttendees(draft.value.attendees)
+})
+function onParticipantsChange(ids) {
+  participantIds.value = ids
+  draft.value.attendees = participantPeople.value.filter(p => ids.includes(p.user_id))
+    .map(p => p.display_name).join('、')
+}
+async function openParticipants() {
+  await fetchParticipantPeople()
+}
 
 function localDate(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -39,6 +89,18 @@ const canUse = computed(() => isPermissionOwner.value && can('meetingArchive.vie
 const canCreate = computed(() => canUse.value && can('meetingArchive.create'))
 const canEdit = computed(() => canUse.value && can('meetingArchive.edit'))
 const canDelete = computed(() => canUse.value && can('meetingArchive.delete'))
+
+// 表單未達儲存條件時，同步停用按鈕；saveRecord 仍保留送出前檢查。
+const canSaveRecord = computed(() => (
+  !saving.value &&
+  (isNew.value ? canCreate.value : canEdit.value) &&
+  Boolean(draft.value.title.trim()) &&
+  Boolean(draft.value.meeting_date) &&
+  Boolean(draft.value.content.trim()) &&
+  !peopleLoading.value &&
+  !peopleError.value &&
+  participantIds.value.length > 0
+))
 
 // 權限被撤銷或使用者切換時，使晚回來的非同步結果失效。
 let fetchVersion = 0
@@ -95,6 +157,8 @@ function startNew() {
   if (!canCreate.value) return
   if (editing.value && !confirm('尚未儲存的內容將會遺失，確定建立新紀錄？')) return
   draft.value = { ...emptyDraft(), meeting_date: selectedDate.value || localDate() }
+  participantIds.value = []
+  void fetchParticipantPeople()
   isNew.value = true
   editing.value = true
   selectedId.value = null
@@ -108,6 +172,8 @@ function startEdit() {
     attendees: selectedRecord.value.attendees ?? '',
     content: selectedRecord.value.content ?? ''
   }
+  participantIds.value = matchLegacyAttendees(draft.value.attendees)
+  void fetchParticipantPeople()
   isNew.value = false
   editing.value = true
 }
@@ -165,6 +231,14 @@ async function saveRecord() {
     return
   }
 
+  if (peopleLoading.value || peopleError.value) {
+    error.value = '人員清單尚未成功載入，請先重新開啟選擇器。'
+    return
+  }
+  if (!participantIds.value.length) {
+    error.value = '請先從 Checklist 選擇至少一位與會人員。'
+    return
+  }
   const ownerId = currentUser.value.id
   const version = ++mutationVersion
   saving.value = true
@@ -268,6 +342,11 @@ watch(
     editing.value = false
     isNew.value = false
     draft.value = emptyDraft()
+    peopleVersion += 1
+    participantIds.value = []
+    participantPeople.value = []
+    peopleError.value = ''
+    peopleLoading.value = false
     if (allowed) void fetchRecords()
   },
   { immediate: true, flush: 'sync' }
@@ -380,9 +459,13 @@ watch(search, () => {
           </div>
           <div><label for="meeting-title" class="mb-2 block text-sm font-medium text-slate-700">會議名稱 *</label><input id="meeting-title" v-model="draft.title" maxlength="200" required class="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-500" placeholder="例如：營運例會" /></div>
           <div class="grid gap-4 sm:grid-cols-2"><div><label for="meeting-date" class="mb-2 block text-sm font-medium text-slate-700">會議日期 *</label><input id="meeting-date" v-model="draft.meeting_date" type="date" required class="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-500" /></div><div><label for="meeting-category" class="mb-2 block text-sm font-medium text-slate-700">會議分類</label><input id="meeting-category" v-model="draft.category" maxlength="100" class="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-500" placeholder="例如：跨部門、營運例會" /></div></div>
-          <div><label for="meeting-attendees" class="mb-2 block text-sm font-medium text-slate-700">與會人員</label><input id="meeting-attendees" v-model="draft.attendees" class="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-500" placeholder="例如：Sam、Kelvin" /></div>
+          <div>
+            <MeetingParticipantPicker :model-value="participantIds" :people="participantPeople" :loading="peopleLoading" :error="peopleError"
+              @update:model-value="onParticipantsChange" @open="openParticipants" />
+            <p class="mt-2 text-xs leading-5 text-amber-700">目前為 Checklist 介面整合階段。儲存時仍使用既有的與會人員文字欄位；個別閱讀權限尚未啟用。</p>
+          </div>
           <div><label for="meeting-content" class="mb-2 block text-sm font-medium text-slate-700">會議內容 *</label><textarea id="meeting-content" v-model="draft.content" required rows="18" class="w-full resize-y rounded-lg border border-slate-200 px-4 py-3 text-sm leading-8 outline-none focus:border-slate-500" placeholder="在這裡記錄會議內容，可自由換行及分段…"></textarea><p class="mt-2 text-xs text-slate-400">支援純文字與換行。此階段不變更資料格式。</p></div>
-          <div class="border-t border-slate-100 pt-5"><button type="submit" :disabled="saving || !(isNew ? canCreate : canEdit)" class="rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40">{{ saving ? '儲存中…' : '儲存紀錄' }}</button></div>
+          <div class="border-t border-slate-100 pt-5"><button type="submit" :disabled="!canSaveRecord" class="rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white disabled:hover:bg-slate-300">{{ saving ? '儲存中…' : '儲存紀錄' }}</button></div>
         </form>
 
         <div v-else-if="selectedRecord" class="mx-auto max-w-[850px]">
