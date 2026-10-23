@@ -1,6 +1,8 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import MeetingParticipantPicker from './MeetingParticipantPicker.vue'
+import MeetingRichTextEditor from './MeetingRichTextEditor.vue'
+import { meetingContentToPlainText, isMeetingContentEmpty } from '@/utils/meetings/meetingRichText'
 import { currentUser, isAuthReady } from '@/stores/authState'
 import { supabase } from '@/lib/supabaseClient'
 import {
@@ -96,7 +98,7 @@ const canSaveRecord = computed(() => (
   (isNew.value ? canCreate.value : canEdit.value) &&
   Boolean(draft.value.title.trim()) &&
   Boolean(draft.value.meeting_date) &&
-  Boolean(draft.value.content.trim()) &&
+  !isMeetingContentEmpty(draft.value.content) &&
   !peopleLoading.value &&
   !peopleError.value &&
   participantIds.value.length > 0
@@ -111,7 +113,7 @@ const searching = computed(() => Boolean(keyword.value))
 const searched = computed(() => {
   if (!keyword.value) return records.value
   return records.value.filter(record =>
-    [record.title, record.category, record.attendees, record.content]
+    [record.title, record.category, record.attendees, meetingContentToPlainText(record.content)]
       .some(value => String(value ?? '').toLocaleLowerCase().includes(keyword.value))
   )
 })
@@ -226,7 +228,7 @@ async function fetchRecords() {
 async function saveRecord() {
   const allowed = isNew.value ? canCreate : canEdit
   if (!canUse.value || !allowed.value || saving.value) return
-  if (!draft.value.title.trim() || !draft.value.meeting_date || !draft.value.content.trim()) {
+  if (!draft.value.title.trim() || !draft.value.meeting_date || isMeetingContentEmpty(draft.value.content)) {
     error.value = '請填寫會議名稱、日期及紀錄內容。'
     return
   }
@@ -322,8 +324,8 @@ function highlightParts(text) {
   ]
 }
 function excerpt(record) {
-  if (!keyword.value) return (record.content ?? '').slice(0, 90)
-  const text = record.content ?? ''
+  if (!keyword.value) return meetingContentToPlainText(record.content).slice(0, 90)
+  const text = meetingContentToPlainText(record.content)
   const index = text.toLocaleLowerCase().indexOf(keyword.value)
   return index < 0 ? text.slice(0, 90) : `…${text.slice(Math.max(0, index - 26), index + keyword.value.length + 54)}…`
 }
@@ -464,7 +466,7 @@ watch(search, () => {
               @update:model-value="onParticipantsChange" @open="openParticipants" />
             <p class="mt-2 text-xs leading-5 text-amber-700">目前為 Checklist 介面整合階段。儲存時仍使用既有的與會人員文字欄位；個別閱讀權限尚未啟用。</p>
           </div>
-          <div><label for="meeting-content" class="mb-2 block text-sm font-medium text-slate-700">會議內容 *</label><textarea id="meeting-content" v-model="draft.content" required rows="18" class="w-full resize-y rounded-lg border border-slate-200 px-4 py-3 text-sm leading-8 outline-none focus:border-slate-500" placeholder="在這裡記錄會議內容，可自由換行及分段…"></textarea><p class="mt-2 text-xs text-slate-400">支援純文字與換行。此階段不變更資料格式。</p></div>
+          <div><label for="meeting-content" class="mb-2 block text-sm font-medium text-slate-700">會議內容 *</label><MeetingRichTextEditor id="meeting-content" v-model="draft.content" /><p class="mt-2 text-xs text-slate-400">支援標題、粗體、斜體、清單與連結；既有純文字紀錄仍可編輯。</p></div>
           <div class="border-t border-slate-100 pt-5"><button type="submit" :disabled="!canSaveRecord" class="rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white disabled:hover:bg-slate-300">{{ saving ? '儲存中…' : '儲存紀錄' }}</button></div>
         </form>
 
@@ -485,7 +487,7 @@ watch(search, () => {
             </div>
           </div>
           <div v-if="selectedRecord.attendees" class="mt-7 border-y border-slate-100 py-4"><p class="mb-1 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">與會人員</p><p class="break-words text-sm leading-6 text-slate-700">{{ selectedRecord.attendees }}</p></div>
-          <div class="mt-8 whitespace-pre-wrap break-words text-[15px] leading-[2] text-slate-700">{{ selectedRecord.content }}</div>
+          <div class="mt-8"><MeetingRichTextEditor :key="selectedRecord.id" :model-value="selectedRecord.content" readonly /></div>
           <footer class="mt-12 border-t border-slate-100 pt-4 text-xs text-slate-400">最後更新：{{ new Date(selectedRecord.updated_at).toLocaleString('zh-TW') }}</footer>
         </div>
         <div v-else class="flex min-h-[450px] flex-col items-center justify-center px-4 text-center">
