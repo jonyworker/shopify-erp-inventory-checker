@@ -61,8 +61,8 @@ const permissionDirty = computed(() => {
 })
 const permissionBusy = computed(() => permissionLoading.value || permissionSaving.value)
 const editorBusy = computed(() => operationLoading.value || permissionSaving.value)
-const permissionTotal = computed(() => permissionRows.value.length)
-const permissionSelectedCount = computed(() => permissionDraft.value.length)
+const permissionTotal = computed(() => permissionRows.value.filter(row => row.is_available).length)
+const permissionSelectedCount = computed(() => permissionRows.value.filter(row => row.is_available && permissionDraft.value.includes(row.permission_key)).length)
 
 const groupNames = {
   inventory: '庫存工具',
@@ -75,6 +75,8 @@ const groupNames = {
 const permissionGroups = computed(() => {
   const groups = new Map()
   for (const row of permissionRows.value) {
+    // 停用權限僅隱藏於介面，原有儲存資料不變。
+    if (!row.is_available) continue
     if (!groups.has(row.group_key)) {
       groups.set(row.group_key, {
         key: row.group_key,
@@ -772,7 +774,7 @@ watch(verifiedAdmin, value => {
                 {{ permissionLoading ? '正在讀取部門權限…' : permissionError || '尚未取得權限資料，請點選上方「重新整理」。' }}
               </div>
               <template v-else>
-                <div v-if="!permissionRows.length" class="mt-4 rounded-lg border border-dashed border-slate-200 p-5 text-sm text-slate-500">
+                <div v-if="!permissionTotal" class="mt-4 rounded-lg border border-dashed border-slate-200 p-5 text-sm text-slate-500">
                   尚無可設定的功能權限。
                 </div>
                 <div v-else class="mt-4 space-y-3">

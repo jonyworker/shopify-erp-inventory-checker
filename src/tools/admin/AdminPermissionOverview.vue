@@ -81,6 +81,8 @@ const overrideDirty = computed(() => overrideReady.value && overrideRows.value.s
 const overrideGroups = computed(() => {
   const groups = new Map()
   for (const item of overrideRows.value) {
+    // 已停用的權限不出現在管理矩陣，但保留原始資料供稽核。
+    if (!item.is_available) continue
     if (!groups.has(item.tool_key)) {
       groups.set(item.tool_key, {
         key: item.tool_key,
