@@ -12,11 +12,14 @@ import {
 } from '@/stores/authState'
 
 import AppSidebar from './components/AppSidebar.vue'
+import { supabase } from '@/lib/supabaseClient'
 import AdminPermissionOverview from './tools/admin/AdminPermissionOverview.vue'
 import AdminDepartmentManager from './tools/admin/AdminDepartmentManager.vue'
 import AdminEmployeeManager from './tools/admin/AdminEmployeeManager.vue'
 import {
   permissionReady,
+  permissionLoading,
+  permissionError,
   permissionUserId,
   isSystemAdmin,
   can,
@@ -80,9 +83,11 @@ const isPermissionOwner = computed(() => Boolean(
   permissionUserId.value === currentUser.value.id
 ))
 
-const canViewMeeting = computed(() =>
-  isPermissionOwner.value && can('meetingArchive.view')
-)
+// 專用 @admin 目前不應閱讀或列出會議；
+// 實際的資料庫 RLS 排除會在 Phase 03-J 一併完成。
+// 避免只依據 Superuser 身分判斷，未來兼任管理員的員工仍可列為與會者。
+const meetingAdminIdentity = ref({ userId: null, checked: false, isDedicated: false })
+let meetingAdminLookupVersion = 0
 
 const isVerifiedAdmin = computed(() =>
   Boolean(
@@ -92,6 +97,43 @@ const isVerifiedAdmin = computed(() =>
     permissionUserId.value === currentUser.value.id
   )
 )
+
+watch(
+  [() => currentUser.value?.id, isVerifiedAdmin],
+  async ([userId, verified]) => {
+    const version = ++meetingAdminLookupVersion
+    meetingAdminIdentity.value = { userId, checked: false, isDedicated: false }
+
+    if (!userId || !verified) return
+
+    try {
+      const { data, error } = await supabase.rpc('pts_admin_users')
+      if (version !== meetingAdminLookupVersion || currentUser.value?.id !== userId) return
+      if (error || !Array.isArray(data)) return
+
+      const dedicated = data.find(person => person.username === 'admin')
+      meetingAdminIdentity.value = {
+        userId,
+        checked: true,
+        isDedicated: Boolean(dedicated && dedicated.user_id === userId)
+      }
+    } catch (error) {
+      // 查詢不成功時，對具系統管理權的帳號預設隱藏會議入口。
+      if (import.meta.env.DEV) console.warn('[PTS 會議] 無法核對專用管理員', error)
+    }
+  },
+  { immediate: true }
+)
+
+const canViewMeeting = computed(() => {
+  if (!isPermissionOwner.value || !can('meetingArchive.view')) return false
+  if (!isVerifiedAdmin.value) return true
+  const identity = meetingAdminIdentity.value
+  return identity.userId === currentUser.value?.id && identity.checked && !identity.isDedicated
+})
+
+const canListBusinessTool = (tool) =>
+  tool.value === 'meetingArchive' ? canViewMeeting.value : canViewTool(tool.value)
 
 const adminToolGroup = {
   label: '系統管理',
@@ -259,7 +301,7 @@ const toolGroups = computed(() => {
         const sections = group.sections
           .map(section => ({
             ...section,
-            tools: (section.tools ?? []).filter(tool => canViewTool(tool.value))
+            tools: (section.tools ?? []).filter(canListBusinessTool)
           }))
           .filter(section => section.tools.length > 0)
 
@@ -269,7 +311,7 @@ const toolGroups = computed(() => {
         continue
       }
 
-      const tools = (group.tools ?? []).filter(tool => canViewTool(tool.value))
+      const tools = (group.tools ?? []).filter(canListBusinessTool)
       if (tools.length > 0) {
         groups.push({ ...group, tools, locked: false })
       }
@@ -668,16 +710,26 @@ onMounted(() => {
             請先登入，才能使用 PTS 工具。
           </template>
           <template v-else-if="!isPermissionOwner">
-            正在確認您的功能權限，請稍候…
+            {{ permissionError || '正在確認您的功能權限，請稍候…' }}
           </template>
           <template v-else>
             目前沒有獲得任何可使用工具的檢視權限，請聯絡系統管理員。
           </template>
         </div>
-        <component
-            v-else
-            :is="currentComponent"
-        />
+        <!-- 權限重查時保持同一工具的 Vue instance 不被卸載；
+             用遮罩與 inert 暫停操作，結果回來後再解除。 -->
+        <div v-else class="relative">
+          <div
+              v-if="permissionLoading && isPermissionOwner"
+              role="status"
+              class="absolute inset-0 z-40 flex items-start justify-center rounded-xl bg-white/90 pt-8 text-sm font-medium text-slate-600"
+          >
+            正在同步功能權限…
+          </div>
+          <div :inert="permissionLoading">
+            <component :is="currentComponent" />
+          </div>
+        </div>
       </div>
     </main>
   </div>

@@ -52,13 +52,24 @@ export async function loadPermissionsForUser(userId) {
   }
 
   const version = ++requestVersion
-  permissionUserId.value = userId
-  permissionList.value = []
+
+  // 同一個已驗證的登入帳號重新同步權限時（例如從其他瀏覽器分頁回來），
+  // 不要先清空有效權限。App.vue 會因此卸載目前工具，導致未儲存的表單消失。
+  // 真正登出或切換使用者時，authState.js 仍會先呼叫 clearPermissions()。
+  const isSameVerifiedUser = permissionReady.value && permissionUserId.value === userId
+
+  if (!isSameVerifiedUser) {
+    permissionUserId.value = userId
+    permissionList.value = []
+    permissionReady.value = false
+    isSystemAdmin.value = false
+    permissionUpdatedAt.value = null
+  }
+
+  // 無論首次讀取或重新同步，都標示 loading。
+  // App.vue 在重新同步期間以 inert + 遮罩暫停 UI 操作；失敗時仍 fail-closed。
   permissionLoading.value = true
-  permissionReady.value = false
   permissionError.value = ''
-  isSystemAdmin.value = false
-  permissionUpdatedAt.value = null
 
   try {
     const [permissionResult, adminResult] = await Promise.all([

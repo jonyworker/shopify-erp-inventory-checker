@@ -50,7 +50,6 @@ const permissionLoading = ref(false)
 const permissionSaving = ref(false)
 const permissionError = ref('')
 const permissionNotice = ref('')
-const permissionReason = ref('')
 let permissionRequestVersion = 0
 let permissionOperationVersion = 0
 
@@ -110,7 +109,6 @@ function clearPermissionEditor() {
   permissionSaving.value = false
   permissionError.value = ''
   permissionNotice.value = ''
-  permissionReason.value = ''
 }
 
 async function loadDepartmentPermissions(departmentId) {
@@ -135,7 +133,6 @@ async function loadDepartmentPermissions(departmentId) {
     const fromDatabase = data.filter(item => item.is_granted).map(item => item.permission_key)
     permissionSaved.value = fromDatabase
     permissionDraft.value = [...fromDatabase]
-    permissionReason.value = ''
   } catch (error) {
     if (requestId !== permissionRequestVersion || !verifiedAdmin.value ||
         currentUser.value?.id !== ownerId) return
@@ -195,7 +192,6 @@ function togglePermission(row, checked) {
 function revertPermissionDraft() {
   if (permissionBusy.value || editorBusy.value) return
   permissionDraft.value = [...permissionSaved.value]
-  permissionReason.value = ''
   permissionError.value = ''
   permissionNotice.value = ''
 }
@@ -211,11 +207,14 @@ async function saveDepartmentPermissions() {
   if (!verifiedAdmin.value || !selectedDepartment.value?.is_active ||
       permissionBusy.value || editorBusy.value ||
       permissionForDepartmentId.value !== selectedId.value || !permissionDirty.value) return
-  const reason = permissionReason.value.trim()
-  if (!reason || reason.length > 500) {
-    permissionError.value = '請填寫 1–500 個字元的權限異動原因。'
-    return
-  }
+  // RPC 仍要求原因，改由系統根據實際權限差異產生稽核摘要。
+  const before = new Set(permissionSaved.value)
+  const after = new Set(permissionDraft.value)
+  const added = [...after].filter(key => !before.has(key))
+  const removed = [...before].filter(key => !after.has(key))
+  const reason = `部門功能權限調整：新增 ${added.length} 項、移除 ${removed.length} 項。` +
+    ` 新增：${added.join(', ') || '無'}；移除：${removed.join(', ') || '無'}`
+  const auditReason = reason.slice(0, 500)
   if (isDirty.value) {
     permissionError.value = '請先儲存或還原上方的部門基本資料，再儲存功能授權。'
     return
@@ -231,14 +230,13 @@ async function saveDepartmentPermissions() {
     const { error } = await supabase.rpc('pts_admin_save_department_permissions', {
       p_department_id: departmentId,
       p_permission_keys: keys,
-      p_reason: reason
+      p_reason: auditReason
     })
     if (error) throw error
     if (operationId !== permissionOperationVersion || currentUser.value?.id !== ownerId ||
         !verifiedAdmin.value || selectedId.value !== departmentId) return
     permissionSaved.value = keys
     permissionDraft.value = [...keys]
-    permissionReason.value = ''
     await loadDepartmentPermissions(departmentId)
     await loadDepartments()
     if (operationId !== permissionOperationVersion || !verifiedAdmin.value ||
@@ -813,13 +811,8 @@ watch(verifiedAdmin, value => {
 
                 <div v-if="permissionDirty" class="mt-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
                   <p class="text-sm font-semibold text-slate-800">尚有未儲存的權限變更</p>
-                  <label class="block space-y-1.5">
-                    <span class="text-xs font-medium text-slate-600">權限異動原因（必填）</span>
-                    <textarea v-model="permissionReason" rows="2" maxlength="500" placeholder="請說明本次授權調整的原因"
-                              class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"></textarea>
-                  </label>
                   <div class="flex flex-wrap gap-2">
-                    <button type="button" :disabled="editorBusy || permissionBusy || !selectedDepartment.is_active || !permissionReason.trim() || isDirty"
+                    <button type="button" :disabled="editorBusy || permissionBusy || !selectedDepartment.is_active || isDirty"
                             class="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
                             @click="saveDepartmentPermissions">
                       {{ permissionSaving ? '儲存中…' : '儲存功能權限' }}

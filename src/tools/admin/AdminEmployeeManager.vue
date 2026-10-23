@@ -29,6 +29,7 @@ const verifiedAdmin = computed(() => Boolean(
 const users = ref([])
 const usersLoading = ref(false)
 const usersError = ref('')
+const pendingIds = ref([]) // 只由管理員專用 RPC 提供，避免把已停用員工誤認為待首次設定
 const search = ref('')
 const statusFilter = ref('all')
 const updatedAt = ref(null)
@@ -63,6 +64,24 @@ const statusPreviewLoading = ref(false)
 const statusSubmitting = ref(false)
 const statusError = ref('')
 const statusNotice = ref('')
+// 待首次設定帳號：重新核發憑證，而不是停用／重新啟用／永久刪除。
+const reissueAction = ref(null)
+const reissuePanelRef = ref(null)
+const reissueReason = ref('')
+const reissueUsername = ref('')
+const reissueAcknowledged = ref(false)
+const reissueSubmitting = ref(false)
+const reissueError = ref('')
+const reissueNotice = ref('')
+const isPendingUser = user => Boolean(user?.user_id && pendingIds.value.includes(user.user_id))
+const canSubmitReissue = computed(() => Boolean(
+  verifiedAdmin.value && reissueAction.value && !reissueSubmitting.value &&
+  !creatingAccount.value && !statusSubmitting.value && !deleteSubmitting.value &&
+  !createdAccount.value && reissueUsername.value === reissueAction.value.username &&
+  reissueReason.value.trim().length >= 1 && reissueReason.value.trim().length <= 500 &&
+  reissueAcknowledged.value && pendingIds.value.includes(reissueAction.value.user_id)
+))
+
 const canSubmitStatus = computed(() => {
   const entry = statusAction.value
   const preview = statusPreview.value
@@ -183,6 +202,7 @@ function clearForNewIdentity() {
   listVersion += 1
   createVersion += 1
   users.value = []
+  pendingIds.value = []
   usersLoading.value = false
   usersError.value = ''
   updatedAt.value = null
@@ -201,6 +221,13 @@ function clearForNewIdentity() {
   statusSubmitting.value = false
   statusError.value = ''
   statusNotice.value = ''
+  reissueAction.value = null
+  reissueReason.value = ''
+  reissueUsername.value = ''
+  reissueAcknowledged.value = false
+  reissueSubmitting.value = false
+  reissueError.value = ''
+  reissueNotice.value = ''
   deleteVersion += 1
   deleteTarget.value = null
   deletePreview.value = null
@@ -224,15 +251,32 @@ async function loadUsers() {
   usersError.value = ''
 
   try {
-    const { data, error } = await supabase.rpc('pts_admin_users')
+    const [{ data, error }, pendingResult] = await Promise.all([
+      supabase.rpc('pts_admin_users'),
+      supabase.rpc('pts_admin_pending_onboarding_users')
+    ])
     if (version !== listVersion || !verifiedAdmin.value || currentUser.value?.id !== ownerId) return
     if (error) throw error
     if (!Array.isArray(data)) throw new Error('人員清單資料格式不正確')
-    users.value = data
+    // 僅將具備正式基本資料的 PTS 員工顯示於人員管理清單。
+    // 開發初期的舊 Auth / app_profiles 資料仍保留在資料庫，
+    // 不影響它們的會議紀錄、Storage 所有權或安全刪除檢查。
+    users.value = data.filter(user =>
+      typeof user.username === 'string' && user.username.trim().length > 0 &&
+      typeof user.display_name === 'string' && user.display_name.trim().length > 0
+    )
+    if (pendingResult.error || !Array.isArray(pendingResult.data)) {
+      // 待啟用清單讀取失敗時採 fail-closed，不顯示重新核發入口。
+      pendingIds.value = []
+      usersError.value = '無法確認哪些帳號仍待首次設定，重新核發功能暫停。請更新清單後再試。'
+    } else {
+      pendingIds.value = pendingResult.data.map(row => row.user_id)
+    }
     updatedAt.value = new Date()
     return true
   } catch (error) {
     if (version !== listVersion || currentUser.value?.id !== ownerId) return
+    pendingIds.value = []
     usersError.value = '無法讀取人員資料，請稍後重新整理。'
     if (import.meta.env.DEV) console.warn('[PTS 人員管理] 讀取帳號清單失敗：', error?.message)
     return false
@@ -385,9 +429,74 @@ async function copyOnboardingEmail() {
 
 function closeCredential() {
   if (!createdAccount.value) return
-  if (!window.confirm('確定關閉這組一次性憑證？離開後無法再次取得，且目前沒有重發功能。')) return
+  if (!window.confirm('確定關閉這組一次性憑證？關閉後無法再次取得原始憑證；如遺失可由管理員重新核發新憑證。')) return
   clearCredential()
   createError.value = ''
+}
+
+function closeReissueAction() {
+  if (reissueSubmitting.value) return
+  reissueAction.value = null
+  reissueReason.value = ''
+  reissueUsername.value = ''
+  reissueAcknowledged.value = false
+  reissueError.value = ''
+}
+
+function openReissueAction(user) {
+  if (!verifiedAdmin.value || !isPendingUser(user) || createdAccount.value || usersLoading.value ||
+      creatingAccount.value || statusSubmitting.value || deleteSubmitting.value || reissueSubmitting.value) return
+  closeStatusAction()
+  closeDeleteAction()
+  reissueAction.value = { user_id: user.user_id, username: user.username, display_name: user.display_name }
+  reissueReason.value = ''
+  reissueUsername.value = ''
+  reissueAcknowledged.value = false
+  reissueError.value = ''
+  reissueNotice.value = ''
+  void nextTick(() => reissuePanelRef.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))
+}
+
+async function submitReissue() {
+  if (!canSubmitReissue.value) return
+  const target = { ...reissueAction.value }
+  const ownerId = currentUser.value?.id
+  reissueSubmitting.value = true
+  reissueError.value = ''
+  reissueNotice.value = ''
+  try {
+    const { data, error } = await supabase.functions.invoke('pts-admin-reissue-onboarding', {
+      body: { user_id: target.user_id, confirm_username: reissueUsername.value, reason: reissueReason.value.trim() }
+    })
+    if (error) throw error
+    if (data?.success !== true || data.user_id !== target.user_id ||
+        data.username !== target.username || !data.temporary_password ||
+        typeof data.temporary_password_expires_at !== 'string') {
+      throw new Error('Credential reissue result uncertain')
+    }
+    if (!verifiedAdmin.value || currentUser.value?.id !== ownerId) return
+    createdAccount.value = {
+      user_id: data.user_id, username: data.username, display_name: data.display_name,
+      email: data.email || '', temporary_password: data.temporary_password,
+      temporary_password_expires_at: data.temporary_password_expires_at,
+      reissued: true
+    }
+    showSecret.value = false
+    copiedSecret.value = false
+    showEmailDraft.value = false
+    copiedEmailDraft.value = false
+    emailCopyMessage.value = ''
+    reissueSubmitting.value = false
+    closeReissueAction()
+    reissueNotice.value = `已重新核發 @${target.username} 的一次性憑證。舊憑證立即失效，請立即保存新憑證或複製通知 Email。`
+    await loadUsers()
+  } catch (error) {
+    if (!verifiedAdmin.value || currentUser.value?.id !== ownerId) return
+    reissueError.value = '無法確認是否已核發新憑證。請先檢查帳號狀態及通知，勿立即連續重試。'
+    if (import.meta.env.DEV) console.warn('[PTS 人員管理] 重新核發未確認：', error?.message)
+  } finally {
+    reissueSubmitting.value = false
+  }
 }
 
 // 關閉狀態操作面板；執行中不可中斷確認（後端作業仍可能已提交）。
@@ -406,6 +515,7 @@ async function openStatusAction(user) {
   if (!verifiedAdmin.value || !user?.user_id || user.user_id === currentUser.value?.id ||
     user.is_system_admin || creatingAccount.value || usersLoading.value || statusSubmitting.value || deleteSubmitting.value) return
   closeDeleteAction()
+  closeReissueAction()
 
   const action = user.is_active ? 'deactivate' : 'reactivate'
   const ownerId = currentUser.value.id
@@ -554,6 +664,7 @@ async function openDeleteAction(user) {
     usersLoading.value || creatingAccount.value || statusSubmitting.value || deleteSubmitting.value ||
     !!createdAccount.value) return
   closeStatusAction()
+  closeReissueAction()
   const version = ++deleteVersion
   const ownerId = currentUser.value.id
   deleteTarget.value = { ...user }
@@ -649,6 +760,7 @@ watch(verifiedAdmin, (enabled) => {
     // 登入權限重新檢查時，不保留尚未送出的帳號狀態操作。
     if (!statusSubmitting.value) closeStatusAction()
     if (!deleteSubmitting.value) closeDeleteAction()
+    if (!reissueSubmitting.value) closeReissueAction()
   }
 }, { immediate: true })
 
@@ -668,12 +780,12 @@ onUnmounted(() => {
       <div>
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">PTS / 系統管理</p>
         <h1 class="mt-2 text-2xl font-semibold tracking-tight text-slate-900">人員管理</h1>
-        <p class="mt-2 text-sm leading-6 text-slate-500">建立員工帳號，管理啟用狀態與經安全預檢的永久刪除。</p>
+        <p class="mt-2 text-sm leading-6 text-slate-500">建立員工帳號、重新核發首次憑證，管理啟用狀態與安全永久刪除。</p>
       </div>
       <button
         type="button"
         class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-        :disabled="!verifiedAdmin || usersLoading || creatingAccount || statusSubmitting || deleteSubmitting"
+        :disabled="!verifiedAdmin || usersLoading || creatingAccount || statusSubmitting || deleteSubmitting || reissueSubmitting"
         @click="loadUsers"
       >
         {{ usersLoading ? '讀取中…' : '更新人員清單' }}
@@ -706,7 +818,7 @@ onUnmounted(() => {
           <div class="flex items-center justify-between gap-3">
             <div>
               <h2 class="text-base font-semibold text-slate-900">帳號清單</h2>
-              <p class="mt-1 text-xs text-slate-500">從 Supabase 讀取目前的 PTS 帳號，不包含密碼。</p>
+              <p class="mt-1 text-xs text-slate-500">從 Supabase 讀取已設定 Username 與姓名的 PTS 帳號，不包含密碼。</p>
             </div>
             <span class="text-xs text-slate-400">{{ updatedAt ? '已同步' : '尚未同步' }}</span>
           </div>
@@ -730,6 +842,7 @@ onUnmounted(() => {
             </select>
           </div>
 
+          <p v-if="reissueNotice" role="status" class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm leading-6 text-emerald-800">{{ reissueNotice }}</p>
           <p v-if="deleteNotice" role="status" class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm leading-6 text-emerald-800">{{ deleteNotice }}</p>
           <p v-if="deleteReviewNotice" role="alert" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">{{ deleteReviewNotice }}</p>
           <p v-if="statusNotice" role="status" class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm leading-6 text-emerald-800">
@@ -747,7 +860,7 @@ onUnmounted(() => {
           <!--
             Phase 03-H2 UI：帳號狀態緊鄰姓名，操作放在最右側。
             系統管理員只顯示小型鎖頭，不顯示操作按鈕。
-            沒有基本資料的歷史帳號保留提示，禁止繞過預檢操作。
+            未建妥 Username 或姓名的歷史帳號會在載入階段排除，不在清單顯示。
           -->
           <ul v-else class="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
             <li v-for="user in filteredUsers" :key="user.user_id" class="px-4 py-3.5 sm:px-5">
@@ -762,7 +875,7 @@ onUnmounted(() => {
                         : 'bg-slate-100 text-slate-600'"
                     >
                       <span class="size-1.5 rounded-full" :class="user.is_active ? 'bg-emerald-500' : 'bg-slate-400'"></span>
-                      {{ user.is_active ? '已啟用' : '未啟用' }}
+                      {{ user.is_active ? '已啟用' : isPendingUser(user) ? '待首次設定' : '未啟用' }}
                     </span>
                     <span
                       v-if="user.is_system_admin"
@@ -788,7 +901,11 @@ onUnmounted(() => {
                 <!-- 日常操作與永久刪除入口分離；刪除需額外預檢與確認。 -->
                 <div v-if="!user.is_system_admin && user.user_id !== currentUser?.id && user.username && user.display_name"
                      class="flex shrink-0 flex-wrap justify-end gap-2">
-                  <button type="button"
+                  <button v-if="isPendingUser(user)" type="button"
+                    class="rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    :disabled="usersLoading || creatingAccount || statusSubmitting || deleteSubmitting || reissueSubmitting || !!createdAccount"
+                    @click="openReissueAction(user)">重新核發憑證</button>
+                  <button v-else type="button"
                     class="rounded-lg border px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
                     :class="user.is_active
                       ? 'border-rose-200 bg-white text-rose-700 hover:bg-rose-50'
@@ -797,7 +914,7 @@ onUnmounted(() => {
                     @click="openStatusAction(user)">
                     {{ user.is_active ? '停用帳號' : '重新啟用' }}
                   </button>
-                  <button v-if="!user.is_active" type="button"
+                  <button v-if="!user.is_active && !isPendingUser(user)" type="button"
                     class="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
                     :disabled="usersLoading || creatingAccount || statusSubmitting || statusPreviewLoading || deleteSubmitting || deletePreviewLoading || !!createdAccount"
                     @click="openDeleteAction(user)">永久刪除</button>
@@ -820,6 +937,39 @@ onUnmounted(() => {
               </p>
             </li>
           </ul>
+          <div v-if="reissueAction" ref="reissuePanelRef" class="space-y-4 rounded-xl border border-amber-200 bg-white p-4" aria-live="polite">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-slate-900">重新核發一次性憑證</p>
+                <p class="mt-1 text-xs text-slate-600">{{ reissueAction.display_name }}（@{{ reissueAction.username }}）</p>
+              </div>
+              <button type="button" :disabled="reissueSubmitting" class="text-xs text-slate-500 hover:underline disabled:opacity-40" @click="closeReissueAction">取消</button>
+            </div>
+            <p class="text-xs leading-6 text-amber-900">核發新憑證後，舊憑證立即失效，新憑證只顯示一次，必須交由員工完成首次密碼設定；此操作不會變更登入密碼或直接啟用員工。</p>
+            <div>
+              <label for="pts-reissue-username" class="block text-xs font-semibold text-slate-700">請輸入完整 Username：{{ reissueAction.username }}</label>
+              <input id="pts-reissue-username" v-model="reissueUsername" :disabled="reissueSubmitting" autocomplete="off" spellcheck="false" placeholder="確認完整 Username"
+                class="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400" />
+            </div>
+            <div>
+              <label for="pts-reissue-reason" class="block text-xs font-semibold text-slate-700">核發原因 *</label>
+              <textarea id="pts-reissue-reason" v-model="reissueReason" :disabled="reissueSubmitting" maxlength="500" rows="2"
+                placeholder="例如：原一次性憑證未保存，重新核發" class="mt-1.5 w-full resize-y rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-slate-400"></textarea>
+            </div>
+            <label class="flex items-start gap-2 text-xs leading-6 text-slate-700">
+              <input v-model="reissueAcknowledged" :disabled="reissueSubmitting" type="checkbox" class="mt-1" />
+              我確認員工身分，了解舊憑證將立即失效，並會安全保存新憑證。
+            </label>
+            <p v-if="reissueError" role="alert" class="rounded-lg bg-rose-50 p-3 text-xs leading-6 text-rose-800">{{ reissueError }}</p>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" :disabled="!canSubmitReissue" @click="submitReissue"
+                class="rounded-lg px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed"
+                :class="canSubmitReissue ? 'bg-amber-700 text-white hover:bg-amber-800' : 'border border-slate-200 bg-slate-100 text-slate-500'">
+                {{ reissueSubmitting ? '核發中…' : '確認重新核發憑證' }}
+              </button>
+              <button type="button" :disabled="reissueSubmitting" class="rounded-lg border border-slate-200 px-4 py-2 text-xs text-slate-600" @click="closeReissueAction">返回</button>
+            </div>
+          </div>
           <div v-if="deleteTarget" ref="deletePanelRef" class="space-y-4 rounded-xl border border-rose-200 bg-white p-4" aria-live="polite">
             <div class="flex items-start justify-between gap-3">
               <div>
@@ -942,14 +1092,14 @@ onUnmounted(() => {
         <div class="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
           <template v-if="createdAccount">
             <div class="flex items-center justify-between gap-2">
-              <h2 class="text-base font-semibold text-slate-900">帳號已建立</h2>
+              <h2 class="text-base font-semibold text-slate-900">{{ createdAccount.reissued ? '一次性憑證已重新核發' : '帳號已建立' }}</h2>
               <span class="rounded-md px-2 py-1 text-xs font-semibold"
                     :class="createdAccountIsActive ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'">
                 {{ createdAccountIsActive ? '已啟用' : '待首次設定' }}
               </span>
             </div>
             <p class="mt-3 text-sm leading-6 text-slate-600">
-              已建立 <strong class="text-slate-900">{{ createdAccount.display_name }}</strong>
+              {{ createdAccount.reissued ? '已為' : '已建立' }} <strong class="text-slate-900">{{ createdAccount.display_name }}</strong>
               （@{{ createdAccount.username }}），{{ createdAccountIsActive ? '已完成首次密碼設定，可使用個人密碼登入。' : '目前仍禁止登入與操作工具。' }}
             </p>
             <div v-if="createdAccountIsActive" class="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-xs leading-6 text-emerald-800">
