@@ -19,7 +19,7 @@ import {
 } from '@/utils/permits/permitRepository'
 
 const { can } = usePermission()
-const canEditPermit = computed(() => can('permitSearch.edit'))
+const canEditPermit = computed(() => can('permitSearch.view'))
 
 const isEditingApplicationNo = ref(false)
 const applicationNoInput = ref('')
