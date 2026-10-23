@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { supabase } from '@/lib/supabaseClient'
 import { currentUser } from '@/stores/authState'
 import {
@@ -9,13 +9,15 @@ import {
 } from '@/stores/permissionState'
 
 /**
- * Phase 03-D2：PTS 員工帳號管理（第一階段：建立待啟用帳號）。
+ * PTS 人員管理：建立員工帳號 + Phase 03-H2 停用／重新啟用。
  *
- * - 員工列表：使用資料庫管理員專用的 pts_admin_users RPC。
- * - 建立帳號：只透過 pts-admin-create-employee Edge Function。
- * - 不在瀏覽器建立 Auth 使用者，不接觸 service_role 金鑰。
- * - 一次性憑證只保留於當前元件的記憶體；離開或登出時清除。
- * - 此版本尚未提供首次設定密碼／啟用員工的介面（Phase 03-D3）。
+ * - 清單使用管理員專用的 pts_admin_users RPC。
+ * - 建立帳號僅呼叫 pts-admin-create-employee Edge Function。
+ * - 狀態操作先呼叫 pts_admin_employee_lifecycle_preview 唯讀預檢，
+ *   確認操作原因後交由 pts-admin-employee-status Edge Function 執行。
+ * - 後端再次驗證身分與權限；前端不接觸 service_role 金鑰。
+ * - 一次性憑證只存在元件記憶體，離開或登出立即清除。
+ * - H3C 永久刪除：先預檢、核對 Username、確認備份及不可逆風險，再呼叫 H3B Edge Function。
  */
 const verifiedAdmin = computed(() => Boolean(
   currentUser.value?.id &&
@@ -44,9 +46,59 @@ const createdAccount = ref(null)
 const showSecret = ref(false)
 const copiedSecret = ref(false)
 const clipboardMessage = ref('')
+// 一次性憑證通知範本只在瀏覽器記憶體中組合，不存入資料庫。
+// 正式部署的 Vite base 為 /shopify-erp-inventory-checker/。
+const PTS_LOGIN_URL = 'https://jonyworker.github.io/shopify-erp-inventory-checker/'
+const showEmailDraft = ref(false)
+const copiedEmailDraft = ref(false)
+const emailCopyMessage = ref('')
+
+// Phase 03-H2：狀態管理採「預檢 → 原因及確認 → 執行」兩階段。
+const statusAction = ref(null)
+const statusPanelRef = ref(null)
+const statusPreview = ref(null)
+const statusReason = ref('')
+const statusAcknowledged = ref(false)
+const statusPreviewLoading = ref(false)
+const statusSubmitting = ref(false)
+const statusError = ref('')
+const statusNotice = ref('')
+const canSubmitStatus = computed(() => {
+  const entry = statusAction.value
+  const preview = statusPreview.value
+  if (!entry || !preview || !verifiedAdmin.value || statusPreviewLoading.value || statusSubmitting.value) return false
+  const permitted = entry.action === 'deactivate' ? preview.can_deactivate === true : preview.can_reactivate === true
+  const length = statusReason.value.trim().length
+  return permitted && statusAcknowledged.value && length >= 1 && length <= 500
+})
+
+// H3C：永久刪除必須獨立預檢，不依賴舊的員工清單狀態直接執行。
+const deleteTarget = ref(null)
+const deletePanelRef = ref(null)
+const deletePreview = ref(null)
+const deletePreviewLoading = ref(false)
+const deleteReason = ref('')
+const deleteUsername = ref('')
+const deleteBackupConfirmed = ref(false)
+const deleteAcknowledged = ref(false)
+const deleteSubmitting = ref(false)
+const deleteError = ref('')
+const deleteNotice = ref('')
+// 後端回覆不明確、但名單已移除目標時，顯示待核對訊息（不可宣告刪除成功）。
+const deleteReviewNotice = ref('')
+let deleteVersion = 0
+const canSubmitDelete = computed(() => Boolean(
+  verifiedAdmin.value && deleteTarget.value && deletePreview.value?.can_delete_after_archive === true &&
+  deletePreview.value?.user_id === deleteTarget.value.user_id && !deleteTarget.value.is_active &&
+  !deletePreviewLoading.value && !deleteSubmitting.value && !usersLoading.value &&
+  deleteUsername.value === deleteTarget.value.username &&
+  deleteReason.value.trim().length >= 1 && deleteReason.value.trim().length <= 500 &&
+  deleteBackupConfirmed.value && deleteAcknowledged.value
+))
 
 let listVersion = 0
 let createVersion = 0
+let statusVersion = 0
 
 const activeCount = computed(() => users.value.filter(user => user.is_active).length)
 const inactiveCount = computed(() => users.value.filter(user => !user.is_active).length)
@@ -70,8 +122,51 @@ const expiryLabel = computed(() => {
   const parsed = new Date(createdAccount.value.temporary_password_expires_at)
   return Number.isNaN(parsed.getTime())
     ? '未提供'
-    : parsed.toLocaleString('zh-TW', { hour12: false })
+    : parsed.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false })
 })
+// Admin 更新員工清單後，若該員工已完成首次啟用，憑證立即從記憶體清除。
+const createdAccountIsActive = computed(() => Boolean(
+  createdAccount.value?.user_id &&
+  users.value.some(user => user.user_id === createdAccount.value.user_id && user.is_active)
+))
+watch(createdAccountIsActive, (active) => {
+  if (!active || !createdAccount.value?.temporary_password) return
+  createdAccount.value = { ...createdAccount.value, temporary_password: '' }
+  showSecret.value = false
+  showEmailDraft.value = false
+  copiedSecret.value = false
+  copiedEmailDraft.value = false
+  clipboardMessage.value = ''
+  emailCopyMessage.value = ''
+})
+
+const onboardingEmailSubject = '【PTS Internal Tools】首次登入與密碼設定通知'
+const onboardingEmailBody = computed(() => {
+  const account = createdAccount.value
+  if (!account?.temporary_password || createdAccountIsActive.value) return ''
+  return [
+    `${account.display_name || '同仁'} 您好：`,
+    '',
+    '已為您建立 PTS Internal Tools 帳號，請點擊以下連結開啟系統：',
+    PTS_LOGIN_URL,
+    '',
+    '首次使用請在登入畫面點選「首次設定個人密碼」，並依照畫面輸入：',
+    `Username：${account.username}`,
+    `一次性憑證：${account.temporary_password}`,
+    '',
+    '接著設定您的個人密碼，即可完成帳號啟用。',
+    '',
+    `一次性憑證最晚使用期限：${expiryLabel.value}（台灣時間）`,
+    '此憑證僅能使用一次；設定完成後即失效。往後請使用 Username 與您設定的密碼登入。',
+    '',
+    '若有任何問題，請聯絡系統管理員。',
+    '',
+    'PTS Internal Tools'
+  ].join('\n')
+})
+const onboardingEmailFullText = computed(() =>
+  `主旨：${onboardingEmailSubject}\n\n${onboardingEmailBody.value}`
+)
 
 function clearCredential() {
   // 此憑證不會寫入 localStorage、sessionStorage 或管理員共用狀態。
@@ -79,6 +174,9 @@ function clearCredential() {
   showSecret.value = false
   copiedSecret.value = false
   clipboardMessage.value = ''
+  showEmailDraft.value = false
+  copiedEmailDraft.value = false
+  emailCopyMessage.value = ''
 }
 
 function clearForNewIdentity() {
@@ -94,6 +192,27 @@ function clearForNewIdentity() {
   reviewing.value = false
   creatingAccount.value = false
   createError.value = ''
+  statusVersion += 1
+  statusAction.value = null
+  statusPreview.value = null
+  statusReason.value = ''
+  statusAcknowledged.value = false
+  statusPreviewLoading.value = false
+  statusSubmitting.value = false
+  statusError.value = ''
+  statusNotice.value = ''
+  deleteVersion += 1
+  deleteTarget.value = null
+  deletePreview.value = null
+  deletePreviewLoading.value = false
+  deleteReason.value = ''
+  deleteUsername.value = ''
+  deleteBackupConfirmed.value = false
+  deleteAcknowledged.value = false
+  deleteSubmitting.value = false
+  deleteError.value = ''
+  deleteNotice.value = ''
+  deleteReviewNotice.value = ''
   clearCredential()
 }
 
@@ -111,10 +230,12 @@ async function loadUsers() {
     if (!Array.isArray(data)) throw new Error('人員清單資料格式不正確')
     users.value = data
     updatedAt.value = new Date()
+    return true
   } catch (error) {
     if (version !== listVersion || currentUser.value?.id !== ownerId) return
     usersError.value = '無法讀取人員資料，請稍後重新整理。'
     if (import.meta.env.DEV) console.warn('[PTS 人員管理] 讀取帳號清單失敗：', error?.message)
+    return false
   } finally {
     if (version === listVersion) usersLoading.value = false
   }
@@ -217,6 +338,9 @@ async function createEmployee() {
     }
     showSecret.value = false
     copiedSecret.value = false
+    showEmailDraft.value = false
+    copiedEmailDraft.value = false
+    emailCopyMessage.value = ''
     reviewing.value = false
     form.value = initialForm()
     await loadUsers()
@@ -233,7 +357,7 @@ async function createEmployee() {
 }
 
 async function copyTemporaryPassword() {
-  if (!verifiedAdmin.value || !createdAccount.value?.temporary_password) return
+  if (!verifiedAdmin.value || createdAccountIsActive.value || !createdAccount.value?.temporary_password) return
   clipboardMessage.value = ''
   try {
     if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
@@ -245,11 +369,270 @@ async function copyTemporaryPassword() {
   }
 }
 
+async function copyOnboardingEmail() {
+  if (!verifiedAdmin.value || createdAccountIsActive.value || !onboardingEmailBody.value) return
+  emailCopyMessage.value = ''
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
+    await navigator.clipboard.writeText(onboardingEmailFullText.value)
+    copiedEmailDraft.value = true
+    emailCopyMessage.value = '已複製信件全文（包含真正的一次性憑證）。請只透過公司核准的管道寄送給正確的員工。'
+  } catch {
+    showEmailDraft.value = true
+    emailCopyMessage.value = '無法自動複製，請在展開的範本中手動選取內容。'
+  }
+}
+
 function closeCredential() {
   if (!createdAccount.value) return
   if (!window.confirm('確定關閉這組一次性憑證？離開後無法再次取得，且目前沒有重發功能。')) return
   clearCredential()
   createError.value = ''
+}
+
+// 關閉狀態操作面板；執行中不可中斷確認（後端作業仍可能已提交）。
+function closeStatusAction() {
+  if (statusSubmitting.value) return
+  statusVersion += 1
+  statusAction.value = null
+  statusPreview.value = null
+  statusReason.value = ''
+  statusAcknowledged.value = false
+  statusPreviewLoading.value = false
+  statusError.value = ''
+}
+
+async function openStatusAction(user) {
+  if (!verifiedAdmin.value || !user?.user_id || user.user_id === currentUser.value?.id ||
+    user.is_system_admin || creatingAccount.value || usersLoading.value || statusSubmitting.value || deleteSubmitting.value) return
+  closeDeleteAction()
+
+  const action = user.is_active ? 'deactivate' : 'reactivate'
+  const ownerId = currentUser.value.id
+  const version = ++statusVersion
+  statusAction.value = {
+    user_id: user.user_id,
+    username: user.username,
+    display_name: user.display_name,
+    action
+  }
+  statusPreview.value = null
+  statusReason.value = ''
+  statusAcknowledged.value = false
+  statusError.value = ''
+  statusNotice.value = ''
+  statusPreviewLoading.value = true
+  void nextTick(() => {
+    if (version === statusVersion) {
+      statusPanelRef.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  })
+
+  try {
+    // H1 安全預檢是唯讀，後端 H2 執行時仍會再次驗證。
+    const { data, error } = await supabase.rpc('pts_admin_employee_lifecycle_preview', {
+      p_target_user_id: user.user_id
+    })
+    if (version !== statusVersion || !verifiedAdmin.value || currentUser.value?.id !== ownerId) return
+    if (error || !data || typeof data !== 'object' || data.user_id !== user.user_id) {
+      throw error || new Error('預檢資料格式不正確')
+    }
+    statusPreview.value = data
+    const permitted = action === 'deactivate' ? data.can_deactivate === true : data.can_reactivate === true
+    if (!permitted) {
+      statusError.value = action === 'reactivate' && data.must_change_password
+        ? '此帳號尚未完成首次密碼設定，不能透過「重新啟用」跳過首次設定程序。'
+        : '此帳號目前不符合操作條件，或受到系統管理員／Superuser 保護。'
+    }
+  } catch (error) {
+    if (version !== statusVersion || !verifiedAdmin.value || currentUser.value?.id !== ownerId) return
+    statusError.value = '無法確認員工帳號狀態，請更新人員清單後再試。'
+    if (import.meta.env.DEV) console.warn('[PTS 人員管理] 狀態預檢失敗：', error?.code || error?.message)
+  } finally {
+    if (version === statusVersion) statusPreviewLoading.value = false
+  }
+}
+
+// 只採納已知的後端安全錯誤；網路故障與不確定的結果必須重新核對狀態。
+async function resolveStatusError(error) {
+  const status = error?.context?.status
+  if (status === 401) return '管理員登入已失效，請重新登入。'
+  if (status === 403) return '目前帳號沒有執行此操作的資格。'
+  if (status === 404) return '找不到這位員工，請更新清單。'
+  if (status === 409) return '帳號狀態已變更或正在處理其他操作，請稍後重新整理。'
+  if (status === 429) return '操作過於頻繁，請稍後再試。'
+
+  try {
+    if (error?.context?.clone) {
+      const response = await error.context.clone().json()
+      const approved = new Set([
+        '僅系統管理員可執行員工帳號管理',
+        '不能操作自己的帳號',
+        '不可操作此帳號（可能為管理員或尚未啟用的員工）',
+        '員工狀態不符合此次操作，請重新整理',
+        '此帳號正在處理其他操作，請稍候再試',
+        '找不到員工帳號',
+        'PTS 資料權限已停用，但 Auth 封鎖尚未完成，請稍後重試「停用」',
+        'Auth 解除封鎖失敗，員工仍為停用狀態',
+        'Auth 帳號狀態驗證失敗，PTS 帳號仍維持停用，請聯絡管理員',
+        '狀態更新尚未完整完成，PTS 存取仍被停用，請稍後重試或聯絡管理員',
+        '無法開始員工帳號操作，請稍後再試',
+        '無法驗證管理員身分',
+        '員工帳號管理服務暫時無法使用'
+      ])
+      if (approved.has(response?.error)) return response.error
+    }
+  } catch { /* 非 JSON 或網路中斷，請勿使用不可信的訊息。 */ }
+  return '未能確認帳號操作結果，請更新人員清單核對實際狀態，勿立即重複執行。'
+}
+
+async function submitStatusChange() {
+  if (!canSubmitStatus.value) return
+  const ownerId = currentUser.value?.id
+  const version = statusVersion
+  const target = statusAction.value
+  const payload = {
+    user_id: target.user_id,
+    action: target.action,
+    reason: statusReason.value.trim()
+  }
+  statusSubmitting.value = true
+  statusError.value = ''
+  statusNotice.value = ''
+  try {
+    const { data, error } = await supabase.functions.invoke('pts-admin-employee-status', {
+      body: payload
+    })
+    if (error) throw error
+    if (!data || data.success !== true || data.user_id !== payload.user_id ||
+      data.action !== payload.action || data.is_active !== (payload.action === 'reactivate')) {
+      throw new Error('伺服器回覆的帳號狀態無法確認')
+    }
+    if (version !== statusVersion || !verifiedAdmin.value || currentUser.value?.id !== ownerId) return
+
+    const name = target.display_name || `@${target.username}`
+    statusAction.value = null
+    statusPreview.value = null
+    statusReason.value = ''
+    statusAcknowledged.value = false
+    const refreshed = await loadUsers()
+    if (version !== statusVersion || !verifiedAdmin.value || currentUser.value?.id !== ownerId) return
+    statusNotice.value = payload.action === 'deactivate'
+      ? `已停用「${name}」；員工無法再登入或存取受保護的 PTS 資料。`
+      : `已重新啟用「${name}」；請員工重新登入，取得新的登入憑證。`
+    if (!refreshed) statusNotice.value += ' 人員清單更新失敗，請稍後再手動更新。'
+  } catch (error) {
+    if (version !== statusVersion || !verifiedAdmin.value || currentUser.value?.id !== ownerId) return
+    statusError.value = await resolveStatusError(error)
+    if (version !== statusVersion || !verifiedAdmin.value || currentUser.value?.id !== ownerId) return
+    // Edge Function 可能已部分完成；先重新讀取，禁止沿用過期的預檢結果重試。
+    statusPreview.value = null
+    statusAcknowledged.value = false
+    await loadUsers()
+    if (import.meta.env.DEV) console.warn('[PTS 人員管理] 員工狀態操作未確認：', error?.message)
+  } finally {
+    if (version === statusVersion) statusSubmitting.value = false
+  }
+}
+
+function closeDeleteAction() {
+  if (deleteSubmitting.value) return
+  deleteVersion += 1
+  deleteTarget.value = null
+  deletePreview.value = null
+  deletePreviewLoading.value = false
+  deleteReason.value = ''
+  deleteUsername.value = ''
+  deleteBackupConfirmed.value = false
+  deleteAcknowledged.value = false
+  deleteError.value = ''
+}
+
+async function openDeleteAction(user) {
+  if (!verifiedAdmin.value || !user?.user_id || !user.username || !user.display_name ||
+    user.is_active || user.is_system_admin || user.user_id === currentUser.value?.id ||
+    usersLoading.value || creatingAccount.value || statusSubmitting.value || deleteSubmitting.value ||
+    !!createdAccount.value) return
+  closeStatusAction()
+  const version = ++deleteVersion
+  const ownerId = currentUser.value.id
+  deleteTarget.value = { ...user }
+  deletePreview.value = null
+  deletePreviewLoading.value = true
+  deleteReason.value = ''
+  deleteUsername.value = ''
+  deleteBackupConfirmed.value = false
+  deleteAcknowledged.value = false
+  deleteError.value = ''
+  deleteNotice.value = ''
+  deleteReviewNotice.value = ''
+  void nextTick(() => { if (version === deleteVersion) deletePanelRef.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) })
+  try {
+    const { data, error } = await supabase.rpc('pts_admin_employee_delete_preview', { p_target_user_id: user.user_id })
+    if (version !== deleteVersion || !verifiedAdmin.value || currentUser.value?.id !== ownerId) return
+    if (error || !data || typeof data !== 'object' || data.user_id !== user.user_id) throw error || new Error('預檢結果不正確')
+    deletePreview.value = data
+    if (data.can_delete_after_archive !== true) deleteError.value = '目前尚不符合永久刪除條件，請勿強制刪除。'
+  } catch (error) {
+    if (version !== deleteVersion || !verifiedAdmin.value || currentUser.value?.id !== ownerId) return
+    deleteError.value = '無法完成永久刪除的安全預檢，請重新讀取清單再試。'
+    if (import.meta.env.DEV) console.warn('[PTS 人員管理] 永久刪除預檢失敗', error?.code || error?.message)
+  } finally { if (version === deleteVersion) deletePreviewLoading.value = false }
+}
+
+async function submitDelete() {
+  if (!canSubmitDelete.value) return
+  const version = deleteVersion
+  const ownerId = currentUser.value.id
+  const target = { ...deleteTarget.value }
+  deleteSubmitting.value = true
+  deleteError.value = ''
+  deleteNotice.value = ''
+  deleteReviewNotice.value = ''
+  try {
+    const { data, error } = await supabase.functions.invoke('pts-admin-delete-employee', {
+      body: {
+        user_id: target.user_id,
+        confirm_username: deleteUsername.value,
+        reason: deleteReason.value.trim(),
+        confirm_permanent_delete: true
+      }
+    })
+    if (error) throw error
+    if (!data || data.success !== true || typeof data.archive_id !== 'string' || data.username !== target.username) {
+      throw new Error('永久刪除回傳無法確認')
+    }
+    if (version !== deleteVersion || !verifiedAdmin.value || currentUser.value?.id !== ownerId) return
+
+    // Edge Function 已明確回報刪除及封存成功，才可收起表單。
+    // closeDeleteAction() 會防止「送出中」手動關閉，因此先結束送出狀態。
+    deleteSubmitting.value = false
+    closeDeleteAction()
+    // 即使重新讀取名單失敗，也不能讓已確認刪除的帳號殘留在本地清單。
+    users.value = users.value.filter(user => user.user_id !== target.user_id)
+    const refreshed = await loadUsers()
+    if (!verifiedAdmin.value || currentUser.value?.id !== ownerId) return
+    deleteNotice.value = `已永久刪除 @${target.username}，並保存稽核封存紀錄。${refreshed ? '' : ' 清單更新失敗，請手動刷新。'}`
+  } catch (error) {
+    if (version !== deleteVersion || !verifiedAdmin.value || currentUser.value?.id !== ownerId) return
+    // 網路中斷、回覆不完整或刪除流程部分成功時，先重新讀取清單，不可盲目重試。
+    deletePreview.value = null
+    deleteAcknowledged.value = false
+    deleteBackupConfirmed.value = false
+    const refreshed = await loadUsers()
+    if (version !== deleteVersion || !verifiedAdmin.value || currentUser.value?.id !== ownerId) return
+
+    if (refreshed && !users.value.some(user => user.user_id === target.user_id)) {
+      // 只有「名單已移除」的證據，無法直接證明 Auth 刪除和稽核封存均完成。
+      // 收起已失效的表單，但用待確認訊息要求管理員核對後端結果。
+      deleteSubmitting.value = false
+      closeDeleteAction()
+      deleteReviewNotice.value = `@${target.username} 已不在人員清單中，但伺服器未回傳完整的刪除成功確認。請至 Supabase 核對 Auth 帳號及稽核封存紀錄，勿重複執行刪除。`
+    } else {
+      deleteError.value = '刪除結果尚無法確認。請勿再次點擊！請管理員檢查 Auth 帳號及封存狀態後再處理。'
+    }
+    if (import.meta.env.DEV) console.warn('[PTS 人員管理] 刪除狀態未確認', error?.message)
+  } finally { if (version === deleteVersion) deleteSubmitting.value = false }
 }
 
 // 更換登入者立即銷毀一次性憑證；權限重新讀取期間只暫時隱藏介面。
@@ -263,6 +646,9 @@ watch(verifiedAdmin, (enabled) => {
   } else {
     listVersion += 1
     usersLoading.value = false
+    // 登入權限重新檢查時，不保留尚未送出的帳號狀態操作。
+    if (!statusSubmitting.value) closeStatusAction()
+    if (!deleteSubmitting.value) closeDeleteAction()
   }
 }, { immediate: true })
 
@@ -282,12 +668,12 @@ onUnmounted(() => {
       <div>
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">PTS / 系統管理</p>
         <h1 class="mt-2 text-2xl font-semibold tracking-tight text-slate-900">人員管理</h1>
-        <p class="mt-2 text-sm leading-6 text-slate-500">建立獨立的員工帳號，並管理首次設定密碼前的待啟用狀態。</p>
+        <p class="mt-2 text-sm leading-6 text-slate-500">建立員工帳號，管理啟用狀態與經安全預檢的永久刪除。</p>
       </div>
       <button
         type="button"
         class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-        :disabled="!verifiedAdmin || usersLoading || creatingAccount"
+        :disabled="!verifiedAdmin || usersLoading || creatingAccount || statusSubmitting || deleteSubmitting"
         @click="loadUsers"
       >
         {{ usersLoading ? '讀取中…' : '更新人員清單' }}
@@ -310,7 +696,7 @@ onUnmounted(() => {
           <p class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ activeCount }}</p>
         </div>
         <div class="rounded-xl border border-slate-200 bg-white p-5">
-          <p class="text-xs text-slate-500">未啟用帳號</p>
+          <p class="text-xs text-slate-500">未啟用／已停用</p>
           <p class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ inactiveCount }}</p>
         </div>
       </div>
@@ -340,10 +726,15 @@ onUnmounted(() => {
             >
               <option value="all">全部狀態</option>
               <option value="active">啟用</option>
-              <option value="inactive">未啟用</option>
+              <option value="inactive">未啟用／已停用</option>
             </select>
           </div>
 
+          <p v-if="deleteNotice" role="status" class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm leading-6 text-emerald-800">{{ deleteNotice }}</p>
+          <p v-if="deleteReviewNotice" role="alert" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">{{ deleteReviewNotice }}</p>
+          <p v-if="statusNotice" role="status" class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm leading-6 text-emerald-800">
+            {{ statusNotice }}
+          </p>
           <p v-if="usersError" role="alert" class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
             {{ usersError }}
           </p>
@@ -353,38 +744,221 @@ onUnmounted(() => {
           <div v-else-if="!filteredUsers.length" class="rounded-lg border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">
             {{ users.length ? '沒有符合搜尋條件的帳號。' : '尚未載入帳號，或目前沒有帳號。' }}
           </div>
-          <ul v-else class="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200">
-            <li v-for="user in filteredUsers" :key="user.user_id" class="flex items-center justify-between gap-3 px-4 py-3">
-              <div class="min-w-0">
-                <p class="truncate text-sm font-medium text-slate-900">{{ user.display_name || '未設定姓名' }}</p>
-                <p class="mt-1 truncate text-xs text-slate-500">{{ user.username ? `@${user.username}` : '未設定 Username' }}</p>
+          <!--
+            Phase 03-H2 UI：帳號狀態緊鄰姓名，操作放在最右側。
+            系統管理員只顯示小型鎖頭，不顯示操作按鈕。
+            沒有基本資料的歷史帳號保留提示，禁止繞過預檢操作。
+          -->
+          <ul v-else class="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
+            <li v-for="user in filteredUsers" :key="user.user_id" class="px-4 py-3.5 sm:px-5">
+              <div class="flex min-w-0 items-center justify-between gap-3">
+                <!-- 主資訊：狀態在姓名前，管理員鎖頭緊鄰姓名；Username 固定在下方。 -->
+                <div class="min-w-0 flex-1">
+                  <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <span
+                      class="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium"
+                      :class="user.is_active
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : 'bg-slate-100 text-slate-600'"
+                    >
+                      <span class="size-1.5 rounded-full" :class="user.is_active ? 'bg-emerald-500' : 'bg-slate-400'"></span>
+                      {{ user.is_active ? '已啟用' : '未啟用' }}
+                    </span>
+                    <span
+                      v-if="user.is_system_admin"
+                      class="inline-flex size-4 shrink-0 items-center justify-center text-slate-500"
+                      title="系統管理員：不開放停用或刪除"
+                      role="img"
+                      aria-label="系統管理員，帳號受保護"
+                    >
+                      <svg aria-hidden="true" class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="5" y="10" width="14" height="11" rx="2" />
+                        <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                      </svg>
+                    </span>
+                    <span class="min-w-0 break-words text-sm font-semibold leading-6 text-slate-900">
+                      {{ user.display_name || '未設定姓名' }}
+                    </span>
+                  </div>
+                  <p class="mt-0.5 break-all text-xs leading-5 text-slate-500">
+                    {{ user.username ? `@${user.username}` : '尚未設定 Username' }}
+                  </p>
+                </div>
+
+                <!-- 日常操作與永久刪除入口分離；刪除需額外預檢與確認。 -->
+                <div v-if="!user.is_system_admin && user.user_id !== currentUser?.id && user.username && user.display_name"
+                     class="flex shrink-0 flex-wrap justify-end gap-2">
+                  <button type="button"
+                    class="rounded-lg border px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
+                    :class="user.is_active
+                      ? 'border-rose-200 bg-white text-rose-700 hover:bg-rose-50'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'"
+                    :disabled="usersLoading || creatingAccount || statusSubmitting || statusPreviewLoading || deleteSubmitting || deletePreviewLoading || !!createdAccount"
+                    @click="openStatusAction(user)">
+                    {{ user.is_active ? '停用帳號' : '重新啟用' }}
+                  </button>
+                  <button v-if="!user.is_active" type="button"
+                    class="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    :disabled="usersLoading || creatingAccount || statusSubmitting || statusPreviewLoading || deleteSubmitting || deletePreviewLoading || !!createdAccount"
+                    @click="openDeleteAction(user)">永久刪除</button>
+                </div>
+                <button
+                  v-else-if="!user.is_system_admin && (!user.username || !user.display_name)"
+                  type="button"
+                  class="shrink-0 cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-400"
+                  disabled
+                  title="基本資料不完整，請先確認來源"
+                >
+                  不可操作
+                </button>
               </div>
-              <div class="flex shrink-0 flex-col items-end gap-1">
-                <span v-if="user.is_system_admin" class="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">管理員</span>
-                <span class="rounded-md px-2 py-0.5 text-[11px] font-medium"
-                      :class="user.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'">
-                  {{ user.is_active ? '已啟用' : '未啟用' }}
-                </span>
-              </div>
+
+              <!-- 歷史異常帳號不可按「重新啟用」；不要猜測其真實帳號用途。 -->
+              <p v-if="!user.username || !user.display_name" class="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+                <span class="font-medium text-slate-700">資料待確認：</span>
+                此帳號缺少基本資料，請先確認來源，暫不提供狀態操作。
+              </p>
             </li>
           </ul>
-          <p class="text-xs leading-5 text-slate-400">未啟用狀態可能包含舊帳號或待首次設定密碼的帳號。此階段僅供檢視，尚未開放修改帳號狀態。</p>
+          <div v-if="deleteTarget" ref="deletePanelRef" class="space-y-4 rounded-xl border border-rose-200 bg-white p-4" aria-live="polite">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-rose-800">永久刪除員工帳號</p>
+                <p class="mt-1 text-xs text-slate-600">{{ deleteTarget.display_name }}（@{{ deleteTarget.username }}）</p>
+              </div>
+              <button type="button" class="text-xs text-slate-500 hover:underline disabled:opacity-40" :disabled="deleteSubmitting" @click="closeDeleteAction">取消</button>
+            </div>
+            <p class="text-xs leading-6 text-rose-700">永久刪除將移除 Supabase Auth 登入帳號與權限設定，無法還原。必要的稽核快照仍會保留。</p>
+            <p v-if="deletePreviewLoading" class="text-xs text-slate-600">正在執行安全預檢…</p>
+            <template v-else>
+              <p v-if="deleteError" role="alert" class="rounded-lg bg-rose-50 p-3 text-xs leading-6 text-rose-700">{{ deleteError }}</p>
+              <div v-if="deletePreview" class="rounded-lg bg-slate-50 p-3 text-xs leading-6 text-slate-600">
+                <p class="font-medium text-slate-800">刪除前檢查：{{ deletePreview.can_delete_after_archive ? '暫時符合前置條件' : '不允許刪除' }}</p>
+                <p>需封存稽核：{{ deletePreview.audit_count ?? '未提供' }} 筆；部門：{{ deletePreview.department_count ?? '未提供' }} 個</p>
+                <p>會議：{{ deletePreview.meeting_count ?? '未提供' }} 筆；Storage 檔案：{{ deletePreview.storage_owned_count ?? '未提供' }} 個；Session：{{ deletePreview.session_count ?? '未提供' }} 個</p>
+                <p v-for="blocker in (deletePreview.delete_blockers || [])" :key="blocker" class="text-rose-700">{{ blocker }}</p>
+              </div>
+              <template v-if="deletePreview?.can_delete_after_archive === true">
+                <div>
+                  <label for="pts-delete-username" class="block text-xs font-semibold text-slate-700">請輸入完整 Username：<strong class="text-slate-900">{{ deleteTarget.username }}</strong></label>
+                  <input id="pts-delete-username" v-model="deleteUsername" type="text" spellcheck="false" autocomplete="off" :disabled="deleteSubmitting" placeholder="請輸入完整 Username"
+                    class="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400 disabled:bg-slate-50" />
+                </div>
+                <div>
+                  <label for="pts-delete-reason" class="block text-xs font-semibold text-slate-700">永久刪除原因 <span class="text-rose-600">*</span></label>
+                  <textarea id="pts-delete-reason" v-model="deleteReason" rows="3" maxlength="500" :disabled="deleteSubmitting"
+                    placeholder="例如：測試帳號清理，確認無需保留登入帳號" class="mt-1.5 w-full resize-y rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-slate-400 disabled:bg-slate-50"></textarea>
+                  <p class="mt-1 text-right text-[11px] text-slate-400">{{ deleteReason.trim().length }} / 500</p>
+                </div>
+                <label class="flex items-start gap-2 text-xs leading-6 text-slate-700">
+                  <input v-model="deleteBackupConfirmed" type="checkbox" class="mt-1.5 size-4 shrink-0 accent-slate-900" :disabled="deleteSubmitting" />
+                  <span>已確認公司備份與封存需求，並確認刪除目標正確。</span>
+                </label>
+                <label class="flex items-start gap-2 text-xs leading-6 text-rose-800">
+                  <input v-model="deleteAcknowledged" type="checkbox" class="mt-1.5 size-4 shrink-0 accent-rose-700" :disabled="deleteSubmitting" />
+                  <span>我了解這是永久刪除，不能透過「重新啟用」恢復帳號。</span>
+                </label>
+                <div class="flex flex-wrap gap-2">
+                  <!-- 未通過驗證時使用清晰的灰底深字，不套用透明度；通過後才顯示紅色危險操作。 -->
+                  <button
+                    type="button"
+                    class="inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors"
+                    :class="canSubmitDelete
+                      ? 'bg-rose-700 text-white hover:bg-rose-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-700'
+                      : 'cursor-not-allowed border border-slate-300 bg-slate-100 text-slate-600'"
+                    :disabled="!canSubmitDelete"
+                    @click="submitDelete"
+                  >{{ deleteSubmitting ? '刪除處理中…' : '確認永久刪除帳號' }}</button>
+                  <button type="button" class="rounded-lg border border-slate-200 px-4 py-2 text-xs text-slate-700 disabled:opacity-40" :disabled="deleteSubmitting" @click="closeDeleteAction">返回</button>
+                </div>
+              </template>
+            </template>
+          </div>
+          <div v-if="statusAction" ref="statusPanelRef" class="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4" aria-live="polite">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-slate-900">
+                  {{ statusAction.action === 'deactivate' ? '確認停用員工' : '確認重新啟用員工' }}
+                </p>
+                <p class="mt-1 text-xs leading-5 text-slate-600">
+                  {{ statusAction.display_name || '未設定姓名' }}（@{{ statusAction.username }}）
+                </p>
+              </div>
+              <button type="button" class="text-xs text-slate-500 underline-offset-2 hover:underline disabled:opacity-40"
+                      :disabled="statusSubmitting" @click="closeStatusAction">取消</button>
+            </div>
+
+            <p v-if="statusPreviewLoading" class="text-xs leading-6 text-slate-600">正在檢查帳號狀態與操作資格…</p>
+            <template v-else>
+              <p v-if="statusError" role="alert" class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs leading-6 text-rose-700">{{ statusError }}</p>
+              <template v-if="statusPreview && (statusAction.action === 'deactivate' ? statusPreview.can_deactivate : statusPreview.can_reactivate)">
+                <p class="text-xs leading-6 text-slate-600">
+                  {{ statusAction.action === 'deactivate'
+                    ? '停用後員工將無法登入，已取得的舊憑證也無法繼續存取受保護資料。部門及歷史紀錄會保留。'
+                    : '重新啟用後員工可使用原密碼登入，但必須重新登入以取得新的登入憑證。' }}
+                </p>
+                <div>
+                  <label for="pts-employee-status-reason" class="block text-xs font-semibold text-slate-700">操作原因 <span class="text-rose-600">*</span></label>
+                  <textarea
+                    id="pts-employee-status-reason"
+                    v-model="statusReason"
+                    rows="3"
+                    maxlength="500"
+                    :disabled="statusSubmitting"
+                    placeholder="例如：測試權限停用流程／員工恢復工作權限"
+                    class="mt-1.5 w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 disabled:bg-slate-100"
+                  ></textarea>
+                  <p class="mt-1 text-right text-[11px] text-slate-400">{{ statusReason.trim().length }} / 500</p>
+                </div>
+                <label class="flex cursor-pointer items-start gap-2 text-xs leading-6 text-slate-600">
+                  <input v-model="statusAcknowledged" type="checkbox" :disabled="statusSubmitting"
+                         class="mt-1.5 size-4 shrink-0 accent-slate-900" />
+                  <span>我已確認員工身分及操作原因，了解本次操作將變更帳號登入與資料存取狀態。</span>
+                </label>
+                <div class="flex flex-wrap gap-2">
+                  <!-- H3C UI 修正：停用中保持灰底深字，避免白字配合 opacity 造成按鈕幾乎不可見。 -->
+                  <button
+                    type="button"
+                    class="inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors"
+                    :class="canSubmitStatus
+                      ? (statusAction.action === 'deactivate'
+                          ? 'bg-rose-700 text-white hover:bg-rose-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-700'
+                          : 'bg-slate-900 text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700')
+                      : 'cursor-not-allowed border border-slate-300 bg-slate-100 text-slate-600'"
+                    :disabled="!canSubmitStatus"
+                    @click="submitStatusChange"
+                  >
+                    {{ statusSubmitting ? '處理中…' : (statusAction.action === 'deactivate' ? '確認停用帳號' : '確認重新啟用') }}
+                  </button>
+                  <button type="button" class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs text-slate-700 disabled:opacity-40"
+                          :disabled="statusSubmitting" @click="closeStatusAction">返回</button>
+                </div>
+              </template>
+            </template>
+          </div>
+          <p class="text-xs leading-5 text-slate-400">「未啟用」可能是待首次設定或已停用帳號，必須通過預檢才能重新啟用。管理員及 Superuser 帳號不開放此處操作；永久刪除需額外安全預檢並輸入 Username 確認。</p>
         </div>
 
         <div class="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
           <template v-if="createdAccount">
             <div class="flex items-center justify-between gap-2">
               <h2 class="text-base font-semibold text-slate-900">帳號已建立</h2>
-              <span class="rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">待首次設定</span>
+              <span class="rounded-md px-2 py-1 text-xs font-semibold"
+                    :class="createdAccountIsActive ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'">
+                {{ createdAccountIsActive ? '已啟用' : '待首次設定' }}
+              </span>
             </div>
             <p class="mt-3 text-sm leading-6 text-slate-600">
               已建立 <strong class="text-slate-900">{{ createdAccount.display_name }}</strong>
-              （@{{ createdAccount.username }}），目前仍禁止登入與操作工具。
+              （@{{ createdAccount.username }}），{{ createdAccountIsActive ? '已完成首次密碼設定，可使用個人密碼登入。' : '目前仍禁止登入與操作工具。' }}
             </p>
-            <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs leading-6 text-amber-900">
+            <div v-if="createdAccountIsActive" class="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-xs leading-6 text-emerald-800">
+              員工已完成首次設定。一次性憑證已失效，系統不再顯示或提供複製。
+            </div>
+            <div v-else class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs leading-6 text-amber-900">
               <strong>重要：一次性憑證僅顯示這一次。</strong>
               離開頁面、重新整理或關閉此區塊後就無法再取得。
-              Phase 03-D3 上線前，員工尚無法使用這組憑證進行首次密碼設定。
+              請員工從登入畫面選擇「首次設定個人密碼」，輸入 Username、一次性憑證及新密碼完成啟用。
             </div>
             <dl class="mt-4 space-y-3 text-sm">
               <div>
@@ -395,13 +969,13 @@ onUnmounted(() => {
                 <dt class="text-xs text-slate-500">員工 Email</dt>
                 <dd class="break-all text-slate-700">{{ createdAccount.email }}</dd>
               </div>
-              <div>
-                <dt class="text-xs text-slate-500">有效期限</dt>
+              <div v-if="!createdAccountIsActive">
+                <dt class="text-xs text-slate-500">一次性憑證最晚使用期限（台灣時間）</dt>
                 <dd class="text-slate-700">{{ expiryLabel }}</dd>
               </div>
             </dl>
-            <label for="employee-first-password" class="mt-4 block text-xs font-medium text-slate-700">一次性憑證</label>
-            <div class="mt-2 flex flex-wrap gap-2">
+            <label v-if="!createdAccountIsActive" for="employee-first-password" class="mt-4 block text-xs font-medium text-slate-700">一次性憑證</label>
+            <div v-if="!createdAccountIsActive" class="mt-2 flex flex-wrap gap-2">
               <input
                 id="employee-first-password"
                 :type="showSecret ? 'text' : 'password'"
@@ -419,9 +993,44 @@ onUnmounted(() => {
                 {{ copiedSecret ? '已複製' : '複製' }}
               </button>
             </div>
-            <p v-if="clipboardMessage" role="status" class="mt-2 text-xs leading-5 text-slate-500">{{ clipboardMessage }}</p>
-            <p class="mt-3 text-xs leading-5 text-slate-500">請以公司核准的私密管道交付一次性憑證，避免貼在公開群組或納入長期文件。</p>
-            <button type="button" class="mt-5 w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50" @click="closeCredential">
+            <p v-if="clipboardMessage && !createdAccountIsActive" role="status" class="mt-2 text-xs leading-5 text-slate-500">{{ clipboardMessage }}</p>
+            <p v-if="!createdAccountIsActive" class="mt-3 text-xs leading-5 text-slate-500">請以公司核准的私密管道交付一次性憑證，避免貼在公開群組或納入長期文件。</p>
+
+            <!-- 一次性憑證專用 Email 範本：僅在尚未完成首次啟用時可檢視／複製。 -->
+            <div v-if="!createdAccountIsActive" class="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <h3 class="text-sm font-semibold text-slate-900">員工啟用通知 Email 範本</h3>
+                  <p class="mt-1 text-xs leading-5 text-slate-500">自動帶入登入網址、Username、一次性憑證及期限。</p>
+                </div>
+                <button type="button"
+                  class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 hover:bg-slate-100"
+                  @click="showEmailDraft = !showEmailDraft">
+                  {{ showEmailDraft ? '隱藏範本' : '預覽範本' }}
+                </button>
+              </div>
+              <div v-if="showEmailDraft" class="mt-3 space-y-2">
+                <p class="break-all text-xs text-slate-600"><span class="font-medium text-slate-700">收件者：</span>{{ createdAccount.email }}</p>
+                <p class="text-xs text-slate-700"><span class="font-medium">主旨：</span>{{ onboardingEmailSubject }}</p>
+                <textarea
+                  :value="onboardingEmailBody"
+                  readonly rows="14" spellcheck="false" aria-label="員工啟用 Email 範本（含一次性憑證）"
+                  class="w-full resize-y rounded-lg border border-slate-200 bg-white p-3 text-xs leading-6 text-slate-800 outline-none"
+                ></textarea>
+              </div>
+              <button type="button"
+                class="mt-3 w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+                @click="copyOnboardingEmail">
+                {{ copiedEmailDraft ? '已複製信件全文' : '複製信件全文（含憑證）' }}
+              </button>
+              <p v-if="emailCopyMessage" class="mt-2 text-xs leading-5 text-slate-700" role="status">{{ emailCopyMessage }}</p>
+              <p class="mt-2 text-xs leading-5 text-slate-500">本功能只產生範本，不會自動寄信。內容含有效的一次性憑證，請確認收件者正確並以公司核准的管道傳送。</p>
+            </div>
+            <button type="button" class="mt-4 w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    :disabled="usersLoading" @click="loadUsers">
+              {{ usersLoading ? '更新中…' : '更新員工啟用狀態' }}
+            </button>
+            <button type="button" class="mt-3 w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50" @click="closeCredential">
               我已安全保存，關閉此憑證
             </button>
           </template>
@@ -464,7 +1073,7 @@ onUnmounted(() => {
                 </p>
                 <p class="text-xs leading-5 text-amber-800">
                   確認後將新增一個正式 Auth 帳號，但仍保持封鎖及待啟用狀態。
-                  首次密碼設定尚未上線，請勿讓同事現在嘗試登入。
+                  員工須先使用一次性憑證完成首次密碼設定，才能使用 Username 與個人密碼登入。
                 </p>
                 <div class="flex flex-wrap gap-2">
                   <button type="button" :disabled="creatingAccount" class="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50" @click="createEmployee">

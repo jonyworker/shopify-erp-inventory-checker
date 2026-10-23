@@ -51,8 +51,14 @@ function respond(status: number, message: string, origin: string | null, success
 const GENERIC_INVALID = '帳號或首次設定憑證錯誤、已過期，或已超過允許嘗試次數'
 
 function isValidPassword(password: string): boolean {
-  return password.length >= 12 && password.length <= 128 &&
-    /[A-Za-z]/.test(password) && /[0-9]/.test(password) &&
+  // 舊規則（暫停使用）：12–128 字元，必須含英文字母及數字。
+  // return password.length >= 12 && password.length <= 128 &&
+  //   /[A-Za-z]/.test(password) && /[0-9]/.test(password) &&
+  //   !/[\x00-\x1f\x7f]/.test(password)
+
+  // 暫行規則：6–128 字元，無字元組合要求；仍拒絕控制字元。
+  // Supabase Auth 的實際最低密碼長度及組合設定仍為最終依據。
+  return password.length >= 6 && password.length <= 128 &&
     !/[\x00-\x1f\x7f]/.test(password)
 }
 
@@ -89,7 +95,7 @@ Deno.serve(async (request: Request) => {
     return respond(400, GENERIC_INVALID, origin)
   }
   if (!isValidPassword(newPassword) || newPassword === onboardingCode) {
-    return respond(400, '新密碼須為 12–128 字元，至少包含英文字母與數字，且不能與暫時憑證相同', origin)
+    return respond(400, '新密碼須為至少 6 個字元，不能包含控制字元，且不可與一次性憑證相同', origin)
   }
 
   const url = Deno.env.get('SUPABASE_URL')

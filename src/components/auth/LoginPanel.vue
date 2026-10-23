@@ -115,12 +115,24 @@ async function handleActivation() {
     activationError.value = '一次性憑證格式不正確，請確認是否完整複製 24 個字元'
     return
   }
+  // 舊規則（暫停使用）：密碼需 12–128 字元、至少含英文字母及數字。
+  // 如未來要恢復較嚴格的密碼政策，請同步修改 Edge Function。
+  // if (
+  //   newPassword.length < 12 || newPassword.length > 128 ||
+  //   !/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword) ||
+  //   /[\x00-\x1f\x7f]/.test(newPassword)
+  // ) {
+  //   activationError.value = '新密碼需為 12–128 字元，包含英文字母及數字，不能有控制字元'
+  //   return
+  // }
+
+  // 暫行規則：放寬至 6–128 字元，不限制英文字母大小寫或數字組合。
+  // 保留基本長度限制、禁止控制字元；Supabase Auth 仍可能有額外政策。
   if (
-    newPassword.length < 12 || newPassword.length > 128 ||
-    !/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword) ||
+    newPassword.length < 6 || newPassword.length > 128 ||
     /[\x00-\x1f\x7f]/.test(newPassword)
   ) {
-    activationError.value = '新密碼需為 12–128 字元，包含英文字母及數字，不能有控制字元'
+    activationError.value = '新密碼請輸入至少 6 個字元（不需混合英文字母與數字），且不可包含控制字元'
     return
   }
   if (newPassword === temporaryPassword) {
@@ -803,7 +815,7 @@ async function handleLogout() {
                   :type="showActivationPassword ? 'text' : 'password'"
                   autocomplete="new-password"
                   :disabled="isActivating"
-                  placeholder="至少 12 字元，包含英文字母與數字"
+                  placeholder="至少 6 個字元，英數與符號自由搭配"
                   class="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:opacity-50"
                   @input="onActivationFieldChange"
               >
