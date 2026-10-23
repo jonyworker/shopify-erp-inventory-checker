@@ -13,6 +13,7 @@ import {
 } from '@/utils/permits/permitRepository'
 
 import { currentUser } from '@/stores/authState'
+import { can } from '@/stores/permissionState'
 
 const applicationNo = ref('')
 const selectedFile = ref(null)
@@ -143,6 +144,11 @@ async function handleSaveToDatabase() {
     saveError.value =
         '請先登入後再寫入資料庫'
 
+    return
+  }
+
+  if (!can('permitPdfParser.view')) {
+    saveError.value = '你沒有簽審公文匯入權限，無法寫入資料庫'
     return
   }
 
@@ -638,6 +644,7 @@ async function handleSaveToDatabase() {
             :disabled="
             !validationResult?.isValid ||
             !currentUser ||
+            !can('permitPdfParser.view') ||
             isSaving
           "
             class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
