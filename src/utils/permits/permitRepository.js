@@ -449,6 +449,12 @@ export async function updatePermitApplicationNo(
     permitId,
     applicationNo
 ) {
+    // 前端額外防護；真正授權由資料庫 RLS pts_can() 強制檢查。
+    const { can } = await import('@/stores/permissionState')
+    if (!can('permitSearch.edit')) {
+        throw new Error('沒有簽審資料查詢／編輯權限。')
+    }
+
     const normalizedApplicationNo =
         String(applicationNo ?? '').trim()
 

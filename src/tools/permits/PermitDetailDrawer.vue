@@ -7,6 +7,8 @@ import {
   watch
 } from 'vue'
 
+import { usePermission } from '@/composables/usePermission'
+
 import {
   completePermit,
   invalidatePermit,
@@ -15,6 +17,9 @@ import {
   resumePermitReminder,
   updatePermitApplicationNo
 } from '@/utils/permits/permitRepository'
+
+const { can } = usePermission()
+const canEditPermit = computed(() => can('permitSearch.edit'))
 
 const isEditingApplicationNo = ref(false)
 const applicationNoInput = ref('')
@@ -122,6 +127,11 @@ function getPermitStatus(expirationDate) {
 }
 
 function startEditApplicationNo() {
+  if (!canEditPermit.value) {
+    if (import.meta.env.DEV) console.warn('缺少簽審資料查詢／編輯權限')
+    return
+  }
+
   applicationNoInput.value =
       props.permit?.application_no ?? ''
 
@@ -138,6 +148,11 @@ function cancelEditApplicationNo() {
 }
 
 async function saveApplicationNo() {
+  if (!canEditPermit.value) {
+    if (import.meta.env.DEV) console.warn('缺少簽審資料查詢／編輯權限')
+    return
+  }
+
   applicationNoError.value = ''
 
   const value =
@@ -190,6 +205,11 @@ async function saveApplicationNo() {
 }
 
 async function pauseReminder() {
+  if (!canEditPermit.value) {
+    if (import.meta.env.DEV) console.warn('缺少簽審資料查詢／編輯權限')
+    return
+  }
+
   const confirmed = window.confirm(
       '確定要暫停這筆公文的到期 Email 提醒嗎？\n\n公文仍維持有效，只是不再寄送到期提醒。'
   )
@@ -220,6 +240,11 @@ async function pauseReminder() {
 }
 
 async function resumeReminder() {
+  if (!canEditPermit.value) {
+    if (import.meta.env.DEV) console.warn('缺少簽審資料查詢／編輯權限')
+    return
+  }
+
   try {
     isUpdatingPermitStatus.value = true
     permitStatusError.value = ''
@@ -242,6 +267,11 @@ async function resumeReminder() {
 }
 
 async function markAsCompleted() {
+  if (!canEditPermit.value) {
+    if (import.meta.env.DEV) console.warn('缺少簽審資料查詢／編輯權限')
+    return
+  }
+
   const confirmed = window.confirm(
       '確定已完成這筆公文的重新申請嗎？\n\n完成後將停止這筆公文的到期 Email 提醒。'
   )
@@ -278,6 +308,11 @@ async function markAsCompleted() {
 }
 
 async function markAsInvalidated() {
+  if (!canEditPermit.value) {
+    if (import.meta.env.DEV) console.warn('缺少簽審資料查詢／編輯權限')
+    return
+  }
+
   const reasonLabels = {
     merged: '合併重新申請',
     authority_request: '主管機關要求',
@@ -350,6 +385,11 @@ function getInvalidationReasonLabel(reason) {
 }
 
 async function reactivate() {
+  if (!canEditPermit.value) {
+    if (import.meta.env.DEV) console.warn('缺少簽審資料查詢／編輯權限')
+    return
+  }
+
   const confirmed = window.confirm(
       '確定要將這筆公文恢復為有效狀態嗎？'
   )
@@ -585,7 +625,7 @@ onBeforeUnmount(() => {
                     </p>
 
                     <button
-                        v-if="!isEditingApplicationNo"
+                        v-if="canEditPermit && !isEditingApplicationNo"
                         type="button"
                         class="text-xs font-medium text-blue-600 hover:text-blue-700"
                         @click="startEditApplicationNo"
@@ -796,8 +836,9 @@ onBeforeUnmount(() => {
                   </p>
 
                   <button
+                      v-if="canEditPermit"
                       type="button"
-                      :disabled="isUpdatingPermitStatus"
+                      :disabled="isUpdatingPermitStatus || !canEditPermit"
                       class="mt-3 text-sm font-medium text-slate-500 underline hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
                       @click="reactivate"
                   >
@@ -831,8 +872,9 @@ onBeforeUnmount(() => {
                   </p>
 
                   <button
+                      v-if="canEditPermit"
                       type="button"
-                      :disabled="isUpdatingPermitStatus"
+                      :disabled="isUpdatingPermitStatus || !canEditPermit"
                       class="mt-3 text-sm font-medium text-slate-500 underline hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
                       @click="reactivate"
                   >
@@ -843,13 +885,13 @@ onBeforeUnmount(() => {
 
               <!-- Invalidate permit -->
               <div
-                  v-if="permit.status === 'active'"
+                  v-if="canEditPermit && permit.status === 'active'"
                   class="mt-4"
               >
                 <button
                     v-if="!isInvalidationFormOpen"
                     type="button"
-                    :disabled="isUpdatingPermitStatus"
+                    :disabled="isUpdatingPermitStatus || !canEditPermit"
                     class="text-sm font-medium text-slate-400 transition hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                     @click="isInvalidationFormOpen = true"
                 >
@@ -878,7 +920,7 @@ onBeforeUnmount(() => {
 
                       <select
                           v-model="invalidationReason"
-                          :disabled="isUpdatingPermitStatus"
+                          :disabled="isUpdatingPermitStatus || !canEditPermit"
                           class="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <option value="merged">
@@ -902,7 +944,7 @@ onBeforeUnmount(() => {
                     <div class="flex flex-wrap gap-2">
                       <button
                           type="button"
-                          :disabled="isUpdatingPermitStatus"
+                          :disabled="isUpdatingPermitStatus || !canEditPermit"
                           class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                           @click="cancelInvalidation"
                       >
@@ -911,7 +953,7 @@ onBeforeUnmount(() => {
 
                       <button
                           type="button"
-                          :disabled="isUpdatingPermitStatus"
+                          :disabled="isUpdatingPermitStatus || !canEditPermit"
                           class="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                           @click="markAsInvalidated"
                       >
@@ -972,9 +1014,9 @@ onBeforeUnmount(() => {
 
                   <div class="flex flex-wrap gap-2">
                     <button
-                        v-if="!permit.reminder_paused"
+                        v-if="canEditPermit && !permit.reminder_paused"
                         type="button"
-                        :disabled="isUpdatingPermitStatus"
+                        :disabled="isUpdatingPermitStatus || !canEditPermit"
                         class="
                         rounded-lg
                         border
@@ -995,9 +1037,9 @@ onBeforeUnmount(() => {
                     </button>
 
                     <button
-                        v-else
+                        v-else-if="canEditPermit"
                         type="button"
-                        :disabled="isUpdatingPermitStatus"
+                        :disabled="isUpdatingPermitStatus || !canEditPermit"
                         class="
                         rounded-lg
                         border
@@ -1018,8 +1060,9 @@ onBeforeUnmount(() => {
                     </button>
 
                     <button
+                        v-if="canEditPermit"
                         type="button"
-                        :disabled="isUpdatingPermitStatus"
+                        :disabled="isUpdatingPermitStatus || !canEditPermit"
                         class="
                         rounded-lg
                         bg-slate-900
