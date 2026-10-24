@@ -26,12 +26,14 @@ const isNew = ref(false)
 const draft = ref(emptyDraft())
 const participantIds = ref([])
 const participantPeople = ref([])
+const participantLinks = ref({})
+const participantLinksLoading = ref(false)
 const peopleLoading = ref(false)
 const peopleError = ref('')
 let peopleVersion = 0
 
-// UI 第一階段：選擇器以 user_id 維持選擇狀態；資料庫仍使用原本的 attendees 文字欄位。
-// 本階段不宣稱已經實施依與會者限制閱讀的 RLS。
+// Phase 2：會議內容與與會者 UUID 由受控 RPC 以單一交易寫入。
+// 嚴格的逐筆閱讀 RLS 尚未啟用。
 async function fetchParticipantPeople() {
   if (!canUse.value) return
   const version = ++peopleVersion
@@ -63,7 +65,7 @@ function matchLegacyAttendees(text) {
   return participantPeople.value.filter(p => names.includes(p.display_name)).map(p => p.user_id)
 }
 watch(participantPeople, () => {
-  if (editing.value) participantIds.value = matchLegacyAttendees(draft.value.attendees)
+  if (editing.value) participantIds.value = isNew.value ? participantIds.value : (participantLinks.value[selectedId.value] ?? matchLegacyAttendees(draft.value.attendees))
 })
 function onParticipantsChange(ids) {
   participantIds.value = ids
@@ -100,6 +102,7 @@ const canSaveRecord = computed(() => (
   Boolean(draft.value.meeting_date) &&
   !isMeetingContentEmpty(draft.value.content) &&
   !peopleLoading.value &&
+  !participantLinksLoading.value &&
   !peopleError.value &&
   participantIds.value.length > 0
 ))
@@ -174,7 +177,7 @@ function startEdit() {
     attendees: selectedRecord.value.attendees ?? '',
     content: selectedRecord.value.content ?? ''
   }
-  participantIds.value = matchLegacyAttendees(draft.value.attendees)
+  participantIds.value = participantLinks.value[selectedId.value] ?? matchLegacyAttendees(draft.value.attendees)
   void fetchParticipantPeople()
   isNew.value = false
   editing.value = true
@@ -204,6 +207,28 @@ async function fetchRecords() {
     }
 
     records.value = data ?? []
+    // 讀取每筆會議已綁定的 UUID。舊資料沒有關聯時才回退姓名比對。
+    participantLinksLoading.value = true
+    try {
+      const ids = records.value.map(record => record.id)
+      const { data: links, error: linksError } = ids.length
+        ? await supabase.rpc('pts_meeting_participant_links', { p_meeting_ids: ids })
+        : { data: [], error: null }
+      if (version !== fetchVersion || currentUser.value?.id !== ownerId || !canUse.value) return
+      if (linksError) throw linksError
+      const grouped = {}
+      for (const link of links ?? []) {
+        ;(grouped[link.meeting_id] ??= []).push(link.user_id)
+      }
+      participantLinks.value = grouped
+    } catch (linkError) {
+      if (version === fetchVersion) {
+        participantLinks.value = {}
+        error.value = `無法讀取與會者關聯：${linkError?.message ?? '請先安裝 Phase 2 RPC'}`
+      }
+    } finally {
+      if (version === fetchVersion) participantLinksLoading.value = false
+    }
     if (!selectedDate.value && !keyword.value) {
       const date = records.value[0]?.meeting_date ?? localDate()
       selectedDate.value = date
@@ -252,16 +277,20 @@ async function saveRecord() {
   }
 
   try {
-    const request = isNew.value
-      ? supabase.from('meeting_records').insert({ ...payload, created_by: ownerId }).select('id').single()
-      : supabase.from('meeting_records').update(payload).eq('id', selectedId.value).select('id').single()
-    const { data, error: saveError } = await request
+    const { data, error: saveError } = await supabase.rpc('pts_meeting_save_with_participants', {
+      p_meeting_id: isNew.value ? null : selectedId.value,
+      p_title: payload.title,
+      p_meeting_date: payload.meeting_date,
+      p_category: payload.category,
+      p_content: payload.content,
+      p_user_ids: participantIds.value
+    })
     if (version !== mutationVersion || currentUser.value?.id !== ownerId || !canUse.value || !allowed.value) return
     if (saveError) {
       error.value = `儲存失敗：${saveError.message}`
       return
     }
-    selectedId.value = data.id
+    selectedId.value = data
     selectedDate.value = payload.meeting_date
     const [y, m] = payload.meeting_date.split('-').map(Number)
     year.value = y
@@ -346,6 +375,7 @@ watch(
     draft.value = emptyDraft()
     peopleVersion += 1
     participantIds.value = []
+    participantLinks.value = {}
     participantPeople.value = []
     peopleError.value = ''
     peopleLoading.value = false
@@ -464,7 +494,7 @@ watch(search, () => {
           <div>
             <MeetingParticipantPicker :model-value="participantIds" :people="participantPeople" :loading="peopleLoading" :error="peopleError"
               @update:model-value="onParticipantsChange" @open="openParticipants" />
-            <p class="mt-2 text-xs leading-5 text-amber-700">目前為 Checklist 介面整合階段。儲存時仍使用既有的與會人員文字欄位；個別閱讀權限尚未啟用。</p>
+            <p class="mt-2 text-xs leading-5 text-amber-700">與會名單已改為 UUID 關聯儲存；個別閱讀權限 RLS 尚未啟用。</p>
           </div>
           <div><label for="meeting-content" class="mb-2 block text-sm font-medium text-slate-700">會議內容 *</label><MeetingRichTextEditor id="meeting-content" v-model="draft.content" /><p class="mt-2 text-xs text-slate-400">支援標題、粗體、斜體、清單與連結；既有純文字紀錄仍可編輯。</p></div>
           <div class="border-t border-slate-100 pt-5"><button type="submit" :disabled="!canSaveRecord" class="rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white disabled:hover:bg-slate-300">{{ saving ? '儲存中…' : '儲存紀錄' }}</button></div>
