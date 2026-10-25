@@ -24,20 +24,40 @@ const normalizedPeople = computed(() => {
 })
 const selectedPeople = computed(() => normalizedPeople.value.filter(p => props.modelValue.includes(p.user_id)))
 const matches = computed(() => normalizedPeople.value.filter(p => String(p.display_name).toLowerCase().includes(query.value.trim().toLowerCase())))
+// 相容 RPC 回傳的不同地區格式：陣列、單值與常見中英文名稱。
+function normalizedRegions(person) {
+  const raw = Array.isArray(person.regions) && person.regions.length
+    ? person.regions
+    : (person.region ? [person.region] : [])
+  return raw.flatMap(value => String(value ?? '').split(/[,，;；/、]+/))
+    .map(value => value.trim().toLowerCase())
+    .map(value => {
+      if (['tw', 'twn', 'taiwan', '台灣', '臺灣', '台湾'].includes(value)) return 'tw'
+      if (['hk', 'hkg', 'hong kong', 'hongkong', '香港'].includes(value)) return 'hk'
+      return value
+    })
+}
 function belongs(p, group) {
-  const codes = Array.isArray(p.regions) ? p.regions : (p.region ? [p.region] : [])
+  const codes = normalizedRegions(p)
   return group === 'other' ? !codes.includes('tw') && !codes.includes('hk') : codes.includes(group)
 }
-function groupPeople(group) { return matches.value.filter(p => {
-  if (group === 'hk' && belongs(p, 'tw')) return false // 跨地區使用者只呈現一次
-  return belongs(p, group)
-}) }
+// 每位使用者只在清單出現一次；跨地區人員仍可透過任一地區的全選按鈕選取。
+function groupPeople(group) {
+  return matches.value.filter(p => {
+    if (group === 'hk' && belongs(p, 'tw')) return false
+    return belongs(p, group)
+  })
+}
+function groupIds(group) {
+  return matches.value.filter(p => belongs(p, group)).map(p => p.user_id)
+}
 function removeSelected(id) {
   if (props.disabled) return
   emit('update:modelValue', props.modelValue.filter(value => value !== id))
 }
 function toggle(id) { working.value = working.value.includes(id) ? working.value.filter(x => x !== id) : [...working.value, id] }
 function toggleAll(ids) {
+  if (!ids.length) return
   working.value = ids.every(id => working.value.includes(id))
     ? working.value.filter(id => !ids.includes(id))
     : [...new Set([...working.value, ...ids])]
@@ -73,8 +93,8 @@ watch(() => props.disabled, value => { if (value) open.value = false })
         <div class="space-y-4 overflow-y-auto p-5">
           <input v-model="query" type="search" placeholder="搜尋人員姓名…" class="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-500" />
           <div class="flex flex-wrap gap-2">
-            <button type="button" class="rounded-md border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50" @click="toggleAll(matches.map(p => p.user_id))">全選 / 取消全選</button>
-            <button v-for="group in groups.slice(0, 2)" :key="group.key" type="button" class="rounded-md border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50" @click="toggleAll(matches.filter(p => belongs(p, group.key)).map(p => p.user_id))">{{ group.label }}全選 / 取消</button>
+            <button type="button" class="rounded-md border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50"  :disabled="!matches.length || loading" :class="(!matches.length || loading) ? 'cursor-not-allowed opacity-40' : ''" @click="toggleAll(matches.map(p => p.user_id))">全選 / 取消全選</button>
+            <button v-for="group in groups.slice(0, 2)" :key="group.key" type="button" class="rounded-md border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50"  :disabled="!groupIds(group.key).length || loading" :class="(!groupIds(group.key).length || loading) ? 'cursor-not-allowed opacity-40' : ''" @click="toggleAll(groupIds(group.key))">{{ group.label }}全選 / 取消</button>
           </div>
           <p v-if="loading" class="text-sm text-slate-500">正在讀取人員…</p>
           <p v-else-if="!matches.length" class="text-sm text-slate-500">沒有符合的人員</p>

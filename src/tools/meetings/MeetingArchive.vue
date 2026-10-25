@@ -48,7 +48,9 @@ async function fetchParticipantPeople() {
     if (!Array.isArray(data)) throw new Error('人員清單回傳格式不正確')
     participantPeople.value = data.map(person => ({
       ...person,
-      regions: Array.isArray(person.regions) ? person.regions : []
+      regions: Array.isArray(person.regions)
+        ? person.regions
+        : (typeof person.regions === 'string' && person.regions.trim() ? [person.regions] : [])
     }))
   } catch (e) {
     if (version === peopleVersion && canUse.value && currentUser.value?.id === ownerId) {
@@ -487,7 +489,10 @@ watch(search, () => {
         <form v-if="editing" class="mx-auto max-w-[850px] space-y-6" @submit.prevent="saveRecord">
           <div class="flex items-center justify-between gap-4 border-b border-slate-100 pb-5">
             <div><p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Editor</p><h2 class="mt-1 text-xl font-bold text-slate-900">{{ isNew ? '新增會議紀錄' : '編輯會議紀錄' }}</h2></div>
-            <button type="button" class="rounded-md px-3 py-2 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-900" @click="cancelEdit">取消</button>
+            <div class="flex shrink-0 items-center gap-2">
+              <button type="button" :disabled="saving" class="rounded-md px-3 py-2 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50" @click="cancelEdit">取消</button>
+              <button type="submit" :disabled="!canSaveRecord" class="inline-flex items-center justify-center rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white disabled:hover:bg-slate-300">{{ saving ? '儲存中…' : '儲存紀錄' }}</button>
+            </div>
           </div>
           <div><label for="meeting-title" class="mb-2 block text-sm font-medium text-slate-700">會議名稱 *</label><input id="meeting-title" v-model="draft.title" maxlength="200" required class="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-500" placeholder="例如：營運例會" /></div>
           <div class="grid gap-4 sm:grid-cols-2"><div><label for="meeting-date" class="mb-2 block text-sm font-medium text-slate-700">會議日期 *</label><input id="meeting-date" v-model="draft.meeting_date" type="date" required class="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-500" /></div><div><label for="meeting-category" class="mb-2 block text-sm font-medium text-slate-700">會議分類</label><input id="meeting-category" v-model="draft.category" maxlength="100" class="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-500" placeholder="例如：跨部門、營運例會" /></div></div>
@@ -497,7 +502,7 @@ watch(search, () => {
             <p class="mt-2 text-xs leading-5 text-amber-700">與會名單已改為 UUID 關聯儲存；個別閱讀權限 RLS 尚未啟用。</p>
           </div>
           <div><label for="meeting-content" class="mb-2 block text-sm font-medium text-slate-700">會議內容 *</label><MeetingRichTextEditor id="meeting-content" v-model="draft.content" /><p class="mt-2 text-xs text-slate-400">支援標題、粗體、斜體、清單與連結；既有純文字紀錄仍可編輯。</p></div>
-          <div class="border-t border-slate-100 pt-5"><button type="submit" :disabled="!canSaveRecord" class="rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white disabled:hover:bg-slate-300">{{ saving ? '儲存中…' : '儲存紀錄' }}</button></div>
+
         </form>
 
         <div v-else-if="selectedRecord" class="mx-auto max-w-[850px]">
