@@ -38,7 +38,6 @@ from public.departments d
 order by d.sort_order, d.name, d.id;
 end;
 $function$;
-
 create or replace function pts_private.pts_admin_replace_user_departments(
   p_target_user_id uuid,
   p_department_ids uuid[],
@@ -163,7 +162,6 @@ insert into public.permission_audit_logs (
 return cardinality(v_new_ids);
 end;
 $function$;
-
 -- Public API wrappers are security INVOKER, calling explicitly guarded private functions.
 create or replace function public.pts_admin_user_departments(p_target_user_id uuid)
 returns table (
@@ -180,7 +178,6 @@ language sql stable security invoker set search_path = ''
 as $function$
 select * from pts_private.pts_admin_list_user_departments(p_target_user_id);
 $function$;
-
 create or replace function public.pts_admin_save_user_departments(
   p_target_user_id uuid,
   p_department_ids uuid[],
@@ -193,7 +190,6 @@ select pts_private.pts_admin_replace_user_departments(
                p_target_user_id, p_department_ids, p_reason
        );
 $function$;
-
 -- Carefully restrict invocation. Private helpers are not exposed through the Data API.
 revoke all on function pts_private.pts_admin_list_user_departments(uuid)
     from public, anon, authenticated, service_role;
@@ -203,7 +199,6 @@ grant execute on function pts_private.pts_admin_list_user_departments(uuid)
   to authenticated;
 grant execute on function pts_private.pts_admin_replace_user_departments(uuid,uuid[],text)
   to authenticated;
-
 revoke all on function public.pts_admin_user_departments(uuid)
     from public, anon, authenticated;
 revoke all on function public.pts_admin_save_user_departments(uuid,uuid[],text)

@@ -27,7 +27,6 @@ from public.departments d
 order by d.sort_order, d.name, d.id;
 end;
 $function$;
-
 create or replace function pts_private.pts_admin_create_department(
   p_code text, p_name text, p_description text default null, p_sort_order integer default 0
 )
@@ -71,7 +70,6 @@ values
 return v_row.id;
 end;
 $function$;
-
 create or replace function pts_private.pts_admin_update_department(
   p_department_id uuid, p_name text, p_description text default null, p_sort_order integer default null
 )
@@ -126,7 +124,6 @@ values
 return true;
 end;
 $function$;
-
 create or replace function pts_private.pts_admin_set_department_active(
   p_department_id uuid, p_is_active boolean, p_reason text
 )
@@ -174,7 +171,6 @@ values
 return true;
 end;
 $function$;
-
 -- Public RPC wrappers: SECURITY INVOKER. Authorization is checked by private functions.
 create or replace function public.pts_admin_departments()
 returns table (
@@ -187,7 +183,6 @@ language sql stable security invoker set search_path = ''
 as $function$
 select * from pts_private.pts_admin_list_departments();
 $function$;
-
 create or replace function public.pts_admin_create_department(
   p_code text, p_name text, p_description text default null, p_sort_order integer default 0
 )
@@ -196,7 +191,6 @@ language sql volatile security invoker set search_path = ''
 as $function$
 select pts_private.pts_admin_create_department(p_code, p_name, p_description, p_sort_order);
 $function$;
-
 create or replace function public.pts_admin_update_department(
   p_department_id uuid, p_name text, p_description text default null, p_sort_order integer default null
 )
@@ -205,7 +199,6 @@ language sql volatile security invoker set search_path = ''
 as $function$
 select pts_private.pts_admin_update_department(p_department_id, p_name, p_description, p_sort_order);
 $function$;
-
 create or replace function public.pts_admin_set_department_active(
   p_department_id uuid, p_is_active boolean, p_reason text
 )
@@ -214,7 +207,6 @@ language sql volatile security invoker set search_path = ''
 as $function$
 select pts_private.pts_admin_set_department_active(p_department_id, p_is_active, p_reason);
 $function$;
-
 -- Public functions are only callable by signed-in sessions.
 -- New PostgreSQL functions otherwise grant EXECUTE to PUBLIC by default.
 revoke all on function public.pts_admin_departments() from public, anon, authenticated, service_role;
@@ -225,7 +217,6 @@ grant execute on function public.pts_admin_departments() to authenticated;
 grant execute on function public.pts_admin_create_department(text,text,text,integer) to authenticated;
 grant execute on function public.pts_admin_update_department(uuid,text,text,integer) to authenticated;
 grant execute on function public.pts_admin_set_department_active(uuid,boolean,text) to authenticated;
-
 -- Private SECURITY DEFINER functions: avoid generic PUBLIC/anon access.
 -- The shared pts_private schema already has USAGE for authenticated from Phase 02-A.
 revoke all on function pts_private.pts_admin_list_departments() from public, anon, authenticated, service_role;

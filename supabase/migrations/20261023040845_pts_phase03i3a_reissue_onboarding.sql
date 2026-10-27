@@ -92,13 +92,11 @@ RETURN jsonb_build_object('success',true,'user_id',p_target_user_id,
                           'temporary_password_expires_at',p_expires_at);
 END;
 $function$;
-
 -- Service credential changes cannot be invoked from frontend SQL/RPC with an ordinary JWT.
 REVOKE ALL ON FUNCTION pts_private.pts_service_reissue_pending_employee_credential(uuid,uuid,text,text,timestamptz,text)
     FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION pts_private.pts_service_reissue_pending_employee_credential(uuid,uuid,text,text,timestamptz,text)
   TO service_role;
-
 -- RPC exposed to admin UI just to distinguish pending vs deactivated accounts.
 CREATE OR REPLACE FUNCTION pts_private.pts_admin_list_pending_onboarding_users()
 RETURNS TABLE(user_id uuid)
@@ -115,18 +113,15 @@ WHERE ap.is_active = false AND ap.must_change_password = true
 ORDER BY ap.user_id;
 END;
 $function$;
-
 CREATE OR REPLACE FUNCTION public.pts_admin_pending_onboarding_users()
 RETURNS TABLE(user_id uuid)
 LANGUAGE sql STABLE SET search_path = '' AS $function$
 SELECT * FROM pts_private.pts_admin_list_pending_onboarding_users();
 $function$;
-
 REVOKE ALL ON FUNCTION pts_private.pts_admin_list_pending_onboarding_users() FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.pts_admin_pending_onboarding_users() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION pts_private.pts_admin_list_pending_onboarding_users() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.pts_admin_pending_onboarding_users() TO authenticated;
-
 -- PostgREST can call public functions only; delegate as service_role to private function.
 CREATE OR REPLACE FUNCTION public.pts_service_reissue_pending_employee_credential(
   p_actor_user_id uuid,

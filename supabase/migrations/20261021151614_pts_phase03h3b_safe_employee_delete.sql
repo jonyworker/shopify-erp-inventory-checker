@@ -8,7 +8,6 @@
 ALTER TABLE pts_private.pts_deleted_employee_archives
     ADD COLUMN IF NOT EXISTS delete_token uuid,
     ADD COLUMN IF NOT EXISTS prepared_expires_at timestamptz;
-
 -- Helper: discover unreviewed referencing business data BEFORE deleting Auth.
 CREATE OR REPLACE FUNCTION pts_private.pts_employee_delete_references(p_target uuid)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
@@ -58,7 +57,6 @@ RETURN v_extra;
 END;
 $fn$;
 REVOKE ALL ON FUNCTION pts_private.pts_employee_delete_references(uuid) FROM PUBLIC,anon,authenticated;
-
 -- H3B also blocks deletion when this person authored/approved other users' grants.
 -- Those FK columns use SET NULL and would otherwise erase attribution.
 CREATE OR REPLACE FUNCTION pts_private.pts_employee_delete_has_other_grant_history(p_target uuid)
@@ -74,7 +72,6 @@ SELECT
                   WHERE (created_by=p_target OR updated_by=p_target) AND user_id<>p_target);
 $fn$;
 REVOKE ALL ON FUNCTION pts_private.pts_employee_delete_has_other_grant_history(uuid) FROM PUBLIC,anon,authenticated;
-
 -- Full server-side safety check. Neither the browser nor H3A's preview is trusted.
 CREATE OR REPLACE FUNCTION pts_private.pts_employee_delete_is_safe(p_target uuid)
 RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=''
@@ -105,7 +102,6 @@ RETURN true;
 END;
 $fn$;
 REVOKE ALL ON FUNCTION pts_private.pts_employee_delete_is_safe(uuid) FROM PUBLIC,anon,authenticated;
-
 -- One SQL transaction: check -> reserve -> archive identity, grants and audit.
 -- The actual Auth deletion is done later through the Auth Admin API.
 CREATE OR REPLACE FUNCTION pts_private.pts_service_prepare_employee_delete(
@@ -190,7 +186,6 @@ $fn$;
 REVOKE ALL ON FUNCTION pts_private.pts_service_prepare_employee_delete(uuid,uuid,text,text,uuid)
     FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION pts_private.pts_service_prepare_employee_delete(uuid,uuid,text,text,uuid) TO service_role;
-
 -- Before ANY Auth delete, enforce that a live PTS profile has a prepared archive
 -- and that all business data references and audit snapshots are still safe.
 -- This also blocks accidental deletion from the Dashboard or unrelated API calls.
@@ -253,11 +248,9 @@ RETURN OLD;
 END;
 $fn$;
 REVOKE ALL ON FUNCTION pts_private.pts_guard_pts_auth_user_delete() FROM PUBLIC,anon,authenticated;
-
 DROP TRIGGER IF EXISTS pts_guard_pts_auth_user_delete ON auth.users;
 CREATE TRIGGER pts_guard_pts_auth_user_delete BEFORE DELETE ON auth.users
     FOR EACH ROW EXECUTE FUNCTION pts_private.pts_guard_pts_auth_user_delete();
-
 -- Prevent restoration of an account while its deletion archive needs review.
 CREATE OR REPLACE FUNCTION pts_private.pts_guard_employee_reactivation_on_delete()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=''
@@ -279,7 +272,6 @@ CREATE TRIGGER pts_guard_employee_reactivation_on_delete
     BEFORE UPDATE OF is_active ON public.app_profiles FOR EACH ROW
     WHEN (OLD.is_active IS DISTINCT FROM NEW.is_active)
 EXECUTE FUNCTION pts_private.pts_guard_employee_reactivation_on_delete();
-
 -- Complete ONLY when Auth deletion has really removed both Auth and PTS profile.
 CREATE OR REPLACE FUNCTION pts_private.pts_service_finish_employee_delete(
   p_actor_user_id uuid,p_archive_id uuid,p_delete_token uuid
@@ -317,7 +309,6 @@ $fn$;
 REVOKE ALL ON FUNCTION pts_private.pts_service_finish_employee_delete(uuid,uuid,uuid)
     FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION pts_private.pts_service_finish_employee_delete(uuid,uuid,uuid) TO service_role;
-
 -- Mark problems for manual reconciliation instead of guessing that deletion succeeded.
 CREATE OR REPLACE FUNCTION pts_private.pts_service_flag_employee_delete_review(
   p_actor_user_id uuid,p_archive_id uuid,p_delete_token uuid,p_note text
@@ -337,7 +328,6 @@ $fn$;
 REVOKE ALL ON FUNCTION pts_private.pts_service_flag_employee_delete_review(uuid,uuid,uuid,text)
     FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION pts_private.pts_service_flag_employee_delete_review(uuid,uuid,uuid,text) TO service_role;
-
 -- RPC bridge. Service role ONLY. Admin JWT is authenticated in the Edge Function,
 -- and DB checks admin against live PTS tables again.
 GRANT USAGE ON SCHEMA pts_private TO service_role;
@@ -361,14 +351,12 @@ AS $fn$
 SELECT pts_private.pts_service_flag_employee_delete_review(
                p_actor_user_id,p_archive_id,p_delete_token,p_note);
 $fn$;
-
 REVOKE ALL ON FUNCTION public.pts_service_prepare_employee_delete(uuid,uuid,text,text,uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.pts_service_finish_employee_delete(uuid,uuid,uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.pts_service_flag_employee_delete_review(uuid,uuid,uuid,text) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.pts_service_prepare_employee_delete(uuid,uuid,text,text,uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.pts_service_finish_employee_delete(uuid,uuid,uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.pts_service_flag_employee_delete_review(uuid,uuid,uuid,text) TO service_role;
-
 COMMENT ON FUNCTION pts_private.pts_service_prepare_employee_delete(uuid,uuid,text,text,uuid)
 IS 'H3B: archive and reserve only. NEVER performs Auth deletion.';
 COMMENT ON FUNCTION pts_private.pts_guard_pts_auth_user_delete()

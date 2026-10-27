@@ -41,4 +41,3 @@ FROM pts_private.pts_permission_details_for_user(p_target_user_id) d
          CROSS JOIN superuser_status s
 ORDER BY d.tool_key, d.action_key;
 $function$;
-

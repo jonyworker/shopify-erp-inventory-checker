@@ -10,7 +10,6 @@ BEGIN
   END IF;
 END;
 $validate$;
-
 UPDATE public.permission_catalog
 SET is_active = false,
     updated_at = now()

@@ -26,6 +26,62 @@ const verifiedAdmin = computed(() => Boolean(
   permissionUserId.value === currentUser.value.id
 ))
 
+// 僅管理員可修改顯示名稱；後端 RPC 再次驗證系統管理員身分。
+const editingNameUser = ref(null)
+const editingNameValue = ref('')
+const nameSaving = ref(false)
+const nameError = ref('')
+const nameNotice = ref('')
+let nameEditVersion = 0
+
+function closeNameEditor() {
+  nameEditVersion += 1
+  editingNameUser.value = null
+  editingNameValue.value = ''
+  nameError.value = ''
+}
+
+function openNameEditor(user) {
+  if (!verifiedAdmin.value || nameSaving.value || !user?.user_id) return
+  editingNameUser.value = { user_id: user.user_id, username: user.username }
+  editingNameValue.value = user.display_name || ''
+  nameError.value = ''
+  nameNotice.value = ''
+}
+
+async function saveDisplayName() {
+  if (!verifiedAdmin.value || nameSaving.value || !editingNameUser.value) return
+  const name = editingNameValue.value.trim()
+  if (!name || name.length > 120) {
+    nameError.value = '顯示名稱須為 1～120 個字元。'
+    return
+  }
+  const target = { ...editingNameUser.value }
+  const ownerId = currentUser.value?.id
+  const version = ++nameEditVersion
+  nameSaving.value = true
+  nameError.value = ''
+  try {
+    const { data, error } = await supabase.rpc('pts_admin_update_display_name', {
+      p_target_user_id: target.user_id,
+      p_display_name: name
+    })
+    if (error) throw error
+    if (version !== nameEditVersion || !verifiedAdmin.value || currentUser.value?.id !== ownerId) return
+    if (data !== name) throw new Error('更新結果不符合預期')
+    users.value = users.value.map(user => user.user_id === target.user_id ? { ...user, display_name: name } : user)
+    editingNameUser.value = null
+    editingNameValue.value = ''
+    nameNotice.value = `@${target.username} 的顯示名稱已更新為「${name}」。`
+  } catch (error) {
+    if (version !== nameEditVersion || currentUser.value?.id !== ownerId) return
+    nameError.value = '名稱更新失敗，請確認已套用最新 SQL migration，或稍後重試。'
+    if (import.meta.env.DEV) console.warn('[PTS 人員管理] 修改顯示名稱失敗：', error?.message)
+  } finally {
+    if (version === nameEditVersion) nameSaving.value = false
+  }
+}
+
 const users = ref([])
 const usersLoading = ref(false)
 const usersError = ref('')
@@ -199,6 +255,9 @@ function clearCredential() {
 }
 
 function clearForNewIdentity() {
+  closeNameEditor()
+  nameSaving.value = false
+  nameNotice.value = '' 
   listVersion += 1
   createVersion += 1
   users.value = []
@@ -757,6 +816,7 @@ watch(verifiedAdmin, (enabled) => {
   } else {
     listVersion += 1
     usersLoading.value = false
+    if (!nameSaving.value) closeNameEditor()
     // 登入權限重新檢查時，不保留尚未送出的帳號狀態操作。
     if (!statusSubmitting.value) closeStatusAction()
     if (!deleteSubmitting.value) closeDeleteAction()
@@ -780,7 +840,7 @@ onUnmounted(() => {
       <div>
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">PTS / 系統管理</p>
         <h1 class="mt-2 text-2xl font-semibold tracking-tight text-slate-900">人員管理</h1>
-        <p class="mt-2 text-sm leading-6 text-slate-500">建立員工帳號、重新核發首次憑證，管理啟用狀態與安全永久刪除。</p>
+        <p class="mt-2 text-sm leading-6 text-slate-500">建立員工帳號、修改顯示名稱、重新核發首次憑證，管理啟用狀態與安全永久刪除。</p>
       </div>
       <button
         type="button"
@@ -848,6 +908,7 @@ onUnmounted(() => {
           <p v-if="statusNotice" role="status" class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm leading-6 text-emerald-800">
             {{ statusNotice }}
           </p>
+          <p v-if="nameNotice" role="status" class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{{ nameNotice }}</p>
           <p v-if="usersError" role="alert" class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
             {{ usersError }}
           </p>
@@ -898,6 +959,11 @@ onUnmounted(() => {
                   </p>
                 </div>
 
+                <button type="button"
+                  class="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  :disabled="!verifiedAdmin || nameSaving || usersLoading || creatingAccount || statusSubmitting || deleteSubmitting || reissueSubmitting || !!createdAccount"
+                  @click="openNameEditor(user)">修改名稱</button>
+
                 <!-- 日常操作與永久刪除入口分離；刪除需額外預檢與確認。 -->
                 <div v-if="!user.is_system_admin && user.user_id !== currentUser?.id && user.username && user.display_name"
                      class="flex shrink-0 flex-wrap justify-end gap-2">
@@ -929,6 +995,19 @@ onUnmounted(() => {
                   不可操作
                 </button>
               </div>
+
+              <form v-if="editingNameUser?.user_id === user.user_id" class="mt-3 space-y-2 rounded-lg bg-slate-50 p-3" @submit.prevent="saveDisplayName">
+                <label :for="`pts-name-${user.user_id}`" class="block text-xs font-semibold text-slate-700">編輯顯示名稱（不更改 Username）</label>
+                <input :id="`pts-name-${user.user_id}`" v-model="editingNameValue" type="text" maxlength="120"
+                  autocomplete="off" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                  :disabled="nameSaving" />
+                <p v-if="nameError" role="alert" class="text-xs text-rose-700">{{ nameError }}</p>
+                <div class="flex justify-end gap-2">
+                  <button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600" :disabled="nameSaving" @click="closeNameEditor">取消</button>
+                  <button type="submit" class="rounded-lg bg-slate-900 px-3 py-1.5 text-xs text-white disabled:opacity-40"
+                    :disabled="nameSaving || !editingNameValue.trim() || editingNameValue.trim() === user.display_name">{{ nameSaving ? '儲存中…' : '儲存名稱' }}</button>
+                </div>
+              </form>
 
               <!-- 歷史異常帳號不可按「重新啟用」；不要猜測其真實帳號用途。 -->
               <p v-if="!user.username || !user.display_name" class="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">

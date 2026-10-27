@@ -37,7 +37,6 @@ FROM public.organizations o
 ORDER BY o.sort_order, o.name, o.id;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.pts_admin_user_organizations(p_target_user_id uuid)
 RETURNS TABLE (
   organization_id uuid,
@@ -53,7 +52,6 @@ LANGUAGE sql STABLE SET search_path = ''
 AS $$
 SELECT * FROM pts_private.pts_admin_list_user_organizations(p_target_user_id);
 $$;
-
 CREATE OR REPLACE FUNCTION pts_private.pts_admin_replace_user_organizations(
   p_target_user_id uuid,
   p_organization_ids uuid[],
@@ -200,7 +198,6 @@ VALUES
 RETURN cardinality(v_new_ids);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.pts_admin_save_user_organizations(
   p_target_user_id uuid,
   p_organization_ids uuid[],
@@ -214,7 +211,6 @@ SELECT pts_private.pts_admin_replace_user_organizations(
                p_target_user_id,p_organization_ids,p_primary_organization_id,p_reason
        );
 $$;
-
 -- No anonymous entry, no default PUBLIC function execute privileges.
 REVOKE ALL ON FUNCTION pts_private.pts_admin_list_user_organizations(uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION pts_private.pts_admin_replace_user_organizations(uuid,uuid[],uuid,text) FROM PUBLIC, anon;
@@ -224,9 +220,8 @@ GRANT EXECUTE ON FUNCTION pts_private.pts_admin_list_user_organizations(uuid) TO
 GRANT EXECUTE ON FUNCTION pts_private.pts_admin_replace_user_organizations(uuid,uuid[],uuid,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.pts_admin_user_organizations(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.pts_admin_save_user_organizations(uuid,uuid[],uuid,text) TO authenticated;
-
 -- H3: existing public.user_organizations FK is ON DELETE RESTRICT and the
 -- H3 delete-preflight treats it as unreviewed business linkage. Thus a user
 -- with organizations cannot be permanently deleted until an admin explicitly
 -- clears memberships (audited by this API), even after suspension. Do NOT
--- silently switch the FK to CASCADE before snapshot/trigger support exists.
+-- silently switch the FK to CASCADE before snapshot/trigger support exists.;

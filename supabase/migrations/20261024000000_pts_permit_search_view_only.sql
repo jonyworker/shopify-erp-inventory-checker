@@ -11,7 +11,6 @@ BEGIN
   END IF;
 END
 $validate$;
-
 -- 清理前一版針對 edit 的 UPDATE 政策，並改用 view。
 DROP POLICY IF EXISTS "pts_permit_search_edit_update" ON public.permits;
 DROP POLICY IF EXISTS "pts_permit_search_view_update" ON public.permits;
@@ -19,14 +18,12 @@ CREATE POLICY "pts_permit_search_view_update"
 ON public.permits FOR UPDATE TO authenticated
 USING ((SELECT public.pts_can('permitSearch.view')))
 WITH CHECK ((SELECT public.pts_can('permitSearch.view')));
-
 -- 防止其他寬鬆的 permissive UPDATE 政策旁路前述檢查。
 DROP POLICY IF EXISTS "pts_permit_search_view_update_guard" ON public.permits;
 CREATE POLICY "pts_permit_search_view_update_guard"
 ON public.permits AS RESTRICTIVE FOR UPDATE TO authenticated
 USING ((SELECT public.pts_can('permitSearch.view')))
 WITH CHECK ((SELECT public.pts_can('permitSearch.view')));
-
 UPDATE public.permission_catalog
 SET is_active = false, updated_at = now()
 WHERE permission_key = 'permitSearch.edit' AND is_active = true;

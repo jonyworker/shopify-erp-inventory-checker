@@ -11,7 +11,6 @@ CREATE TABLE IF NOT EXISTS pts_private.pts_superusers (
     );
 ALTER TABLE pts_private.pts_superusers ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE pts_private.pts_superusers FROM PUBLIC, anon, authenticated;
-
 DO $block$
 DECLARE
 v_admin_id uuid;
@@ -38,7 +37,6 @@ VALUES
      'PTS Phase 03-F: admin has full active business permissions; ordinary staff unchanged');
 END;
 $block$;
-
 -- Keep the standard inheritance engine untouched: no change to the
 -- department union, role union, individual allow/deny or dependencies for staff.
 CREATE OR REPLACE FUNCTION pts_private.pts_effective_permission_details_for_user(
@@ -79,11 +77,9 @@ FROM pts_private.pts_permission_details_for_user(p_target_user_id) d
          CROSS JOIN superuser_status s
 ORDER BY d.tool_key, d.action_key;
 $function$;
-
 -- Never expose a privileged permission-by-user function to browser callers.
 REVOKE ALL ON FUNCTION pts_private.pts_effective_permission_details_for_user(uuid)
     FROM PUBLIC, anon, authenticated;
-
 -- Both browser permission snapshot and RLS pts_can() use this function.
 CREATE OR REPLACE FUNCTION pts_private.pts_my_permission_details()
 RETURNS TABLE (
@@ -94,7 +90,6 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
 AS $function$
 SELECT * FROM pts_private.pts_effective_permission_details_for_user((SELECT auth.uid()));
 $function$;
-
 -- Make the admin Effective Permissions Overview show the same Superuser result.
 CREATE OR REPLACE FUNCTION pts_private.pts_admin_user_permission_details(
   p_target_user_id uuid
@@ -120,7 +115,6 @@ RETURN QUERY
 SELECT d.* FROM pts_private.pts_effective_permission_details_for_user(p_target_user_id) d;
 END;
 $function$;
-
 COMMENT ON TABLE pts_private.pts_superusers IS
   'App-level full business permissions, independent of department and regular system administrator status.';
 COMMENT ON FUNCTION pts_private.pts_effective_permission_details_for_user(uuid) IS

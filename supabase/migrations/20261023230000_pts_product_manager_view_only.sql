@@ -13,7 +13,6 @@ BEGIN
   END IF;
 END
 $check$;
-
 UPDATE public.permission_catalog
 SET is_active = false, updated_at = now()
 WHERE permission_key IN (
@@ -21,7 +20,6 @@ WHERE permission_key IN (
   'productManager.edit',
   'productManager.manage_assets'
 ) AND is_active = true;
-
 -- 公開資料表：只收緊寫入；SELECT 政策維持原狀。
 -- 既有 pts_h2_active_account_guard 仍須通過。
 DO $tables$
@@ -44,24 +42,20 @@ BEGIN
   END LOOP;
 END
 $tables$;
-
 -- Storage：僅針對 product-assets 加上寫入的限制性政策。
 -- 別的 bucket 不會受到本次政策影響。
 DROP POLICY IF EXISTS pts_product_manager_storage_insert_guard ON storage.objects;
 DROP POLICY IF EXISTS pts_product_manager_storage_update_guard ON storage.objects;
 DROP POLICY IF EXISTS pts_product_manager_storage_delete_guard ON storage.objects;
-
 CREATE POLICY pts_product_manager_storage_insert_guard
 ON storage.objects AS RESTRICTIVE FOR INSERT TO authenticated
 WITH CHECK (
   bucket_id <> 'product-assets' OR (SELECT public.pts_can('productManager.view'))
 );
-
 CREATE POLICY pts_product_manager_storage_update_guard
 ON storage.objects AS RESTRICTIVE FOR UPDATE TO authenticated
 USING (bucket_id <> 'product-assets' OR (SELECT public.pts_can('productManager.view')))
 WITH CHECK (bucket_id <> 'product-assets' OR (SELECT public.pts_can('productManager.view')));
-
 CREATE POLICY pts_product_manager_storage_delete_guard
 ON storage.objects AS RESTRICTIVE FOR DELETE TO authenticated
 USING (bucket_id <> 'product-assets' OR (SELECT public.pts_can('productManager.view')));

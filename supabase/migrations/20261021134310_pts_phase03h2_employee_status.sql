@@ -7,7 +7,6 @@
 -- Expire old employee access JWTs when disabling and, crucially, when restoring.
 ALTER TABLE public.app_profiles
     ADD COLUMN IF NOT EXISTS session_valid_after_epoch bigint NOT NULL DEFAULT 0;
-
 -- Guard works with the *actual verified Supabase JWT* and checks live PTS status.
 -- SECURITY DEFINER reads app_profiles without requiring client SELECT rights.
 CREATE OR REPLACE FUNCTION pts_private.pts_employee_business_session_active()
@@ -28,7 +27,6 @@ REVOKE ALL ON FUNCTION pts_private.pts_employee_business_session_active()
     FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION pts_private.pts_employee_business_session_active()
   TO authenticated;
-
 -- Restrictive RLS = existing per-operation permission AND account is active.
 -- All seven current business data tables are intentionally covered.
 DO $policies$
@@ -48,7 +46,6 @@ BEGIN
 END LOOP;
 END
 $policies$;
-
 -- product-assets is the private company asset bucket on this PTS project.
 -- Only restrict this bucket; do not change rules of other buckets.
 CREATE POLICY pts_h2_active_employee_product_storage
@@ -61,7 +58,6 @@ WITH CHECK (
   bucket_id <> 'product-assets'
   OR (SELECT pts_private.pts_employee_business_session_active())
 );
-
 -- Short, exclusive claim prevents two simultaneous admin status operations
 -- from racing across the separate Postgres and Supabase Auth services.
 CREATE TABLE pts_private.pts_employee_status_claims (
@@ -76,7 +72,6 @@ CREATE TABLE pts_private.pts_employee_status_claims (
 );
 ALTER TABLE pts_private.pts_employee_status_claims ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE pts_private.pts_employee_status_claims FROM PUBLIC, anon, authenticated;
-
 -- This is service_role-only; the authenticated admin is validated by the Edge
 -- Function's getUser(access_token), not by a caller-supplied actor_user_id.
 CREATE OR REPLACE FUNCTION pts_private.pts_service_begin_employee_status_change(
@@ -165,7 +160,6 @@ END IF;
 RETURN jsonb_build_object('ok',true,'action',p_action,'username',v_target.username);
 END;
 $function$;
-
 CREATE OR REPLACE FUNCTION pts_private.pts_service_finish_employee_status_change(
   p_actor_user_id uuid, p_target_user_id uuid, p_action text,
   p_claim_token uuid
@@ -249,7 +243,6 @@ RETURN jsonb_build_object('ok',true,'action',p_action,'username',v_username,
                           'is_active',p_action='reactivate');
 END;
 $function$;
-
 -- The Edge Function calls this only if Auth request failed; fail closed.
 -- We intentionally NEVER auto-reactivate after an incomplete deactivation.
 CREATE OR REPLACE FUNCTION pts_private.pts_service_abort_employee_status_change(
@@ -265,11 +258,9 @@ WHERE c.user_id=p_target_user_id AND c.actor_user_id=p_actor_user_id
 RETURN FOUND;
 END;
 $function$;
-
 -- The service role can call the public RPC wrappers, but no logged-in employee
 -- (including Admin) can invoke lifecycle mutation SQL directly.
 GRANT USAGE ON SCHEMA pts_private TO service_role;
-
 CREATE OR REPLACE FUNCTION public.pts_service_begin_employee_status_change(
   p_actor_user_id uuid,p_target_user_id uuid,p_action text,
   p_claim_token uuid,p_reason text
@@ -278,7 +269,6 @@ AS $function$
 SELECT pts_private.pts_service_begin_employee_status_change(
                p_actor_user_id,p_target_user_id,p_action,p_claim_token,p_reason);
 $function$;
-
 CREATE OR REPLACE FUNCTION public.pts_service_finish_employee_status_change(
   p_actor_user_id uuid,p_target_user_id uuid,p_action text,p_claim_token uuid
 ) RETURNS jsonb LANGUAGE sql SET search_path = ''
@@ -286,7 +276,6 @@ AS $function$
 SELECT pts_private.pts_service_finish_employee_status_change(
                p_actor_user_id,p_target_user_id,p_action,p_claim_token);
 $function$;
-
 CREATE OR REPLACE FUNCTION public.pts_service_abort_employee_status_change(
   p_actor_user_id uuid,p_target_user_id uuid,p_claim_token uuid
 ) RETURNS boolean LANGUAGE sql SET search_path = ''
@@ -294,7 +283,6 @@ AS $function$
 SELECT pts_private.pts_service_abort_employee_status_change(
                p_actor_user_id,p_target_user_id,p_claim_token);
 $function$;
-
 REVOKE ALL ON FUNCTION pts_private.pts_service_begin_employee_status_change(uuid,uuid,text,uuid,text)
     FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION pts_private.pts_service_finish_employee_status_change(uuid,uuid,text,uuid)

@@ -131,14 +131,12 @@ RETURN jsonb_build_object(
        );
 END;
 $function$;
-
 REVOKE ALL ON FUNCTION pts_private.pts_admin_employee_lifecycle_preview(uuid)
     FROM PUBLIC, anon;
 -- Existing PTS design calls private SECURITY DEFINER functions from invoker wrappers.
 -- The inner function performs the mandatory admin check on every call.
 GRANT EXECUTE ON FUNCTION pts_private.pts_admin_employee_lifecycle_preview(uuid)
   TO authenticated;
-
 -- Exposed wrapper is SECURITY INVOKER: it must not bypass the internal admin check.
 CREATE OR REPLACE FUNCTION public.pts_admin_employee_lifecycle_preview(
   p_target_user_id uuid
@@ -150,11 +148,9 @@ SET search_path = ''
 AS $function$
 SELECT pts_private.pts_admin_employee_lifecycle_preview(p_target_user_id);
 $function$;
-
 REVOKE ALL ON FUNCTION public.pts_admin_employee_lifecycle_preview(uuid)
     FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.pts_admin_employee_lifecycle_preview(uuid)
   TO authenticated;
-
 COMMENT ON FUNCTION public.pts_admin_employee_lifecycle_preview(uuid) IS
   'Phase 03-H1 admin-only read-only preflight for employee lifecycle. Never mutates accounts.';

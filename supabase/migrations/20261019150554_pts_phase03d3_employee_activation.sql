@@ -6,12 +6,10 @@
 alter table pts_private.pts_employee_onboarding
     add column if not exists activation_claim_token uuid,
     add column if not exists activation_claim_expires_at timestamptz;
-
 -- Either both reservation fields are set or neither is set.
 alter table pts_private.pts_employee_onboarding
     add constraint pts_employee_onboarding_claim_fields_match
         check ((activation_claim_token is null) = (activation_claim_expires_at is null));
-
 -- Stage 1. Verify pending profile + 30-day one-time code under a row lock.
 -- Caller hashes `${userId}:${temporaryCode}` in its server-side Edge Function.
 -- The 5-attempt lock persists and can only be reset through a future admin reissue workflow.
@@ -73,7 +71,6 @@ where user_id = p_target_user_id;
 return true;
 end;
 $function$;
-
 -- Stage 2. Called only after Auth admin API successfully changes the new password
 -- WHILE the Auth user is still banned. This transaction marks the code consumed,
 -- activates the PTS profile, and audits activation together.
@@ -145,7 +142,6 @@ insert into public.permission_audit_logs (
 return true;
 end;
 $function$;
-
 -- On an Auth password-write failure, release only our matching reservation.
 -- The original one-time code remains valid if it has not expired or been locked.
 create or replace function public.pts_service_release_employee_activation(
@@ -172,7 +168,6 @@ where user_id = p_target_user_id
 return found;
 end;
 $function$;
-
 -- These are privileged service-only operations. The browser cannot execute them.
 revoke all on function public.pts_service_begin_employee_activation(uuid,text,uuid)
     from public, anon, authenticated;
@@ -180,7 +175,6 @@ revoke all on function public.pts_service_finish_employee_activation(uuid,uuid)
     from public, anon, authenticated;
 revoke all on function public.pts_service_release_employee_activation(uuid,uuid)
     from public, anon, authenticated;
-
 grant execute on function public.pts_service_begin_employee_activation(uuid,text,uuid)
   to service_role;
 grant execute on function public.pts_service_finish_employee_activation(uuid,uuid)

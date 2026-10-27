@@ -5,7 +5,6 @@
 -- 權限計算來源維持同一套：部門聯集、角色聯集、個人 allow/deny、有效期間、前置權限。
 
 begin;
-
 -- (1) 單一有效權限計算核心。由 SECURITY DEFINER 的受控函式呼叫。
 --     特別注意：這個接受 user_id 的內部函式不可直接開放給 authenticated。
 create or replace function pts_private.pts_permission_details_for_user(p_target_user_id uuid)
@@ -148,10 +147,8 @@ select
 from resolved r
 order by r.tool_key, r.action_key;
 $function$;
-
 revoke all on function pts_private.pts_permission_details_for_user(uuid)
     from public, anon, authenticated, service_role;
-
 -- (2) 原本的「查我的權限」改用相同核心；既有 Vue/RLS API 名稱完全不變。
 create or replace function pts_private.pts_my_permission_details()
 returns table (
@@ -167,12 +164,10 @@ set search_path = ''
 as $function$
 select * from pts_private.pts_permission_details_for_user((select auth.uid()));
 $function$;
-
 revoke all on function pts_private.pts_my_permission_details()
     from public, anon, service_role;
 grant execute on function pts_private.pts_my_permission_details()
     to authenticated;
-
 -- (3) 管理員專用人員目錄。不讀取 Auth 密碼或 Email，也不洩漏 Email。
 create or replace function pts_private.pts_admin_list_users()
 returns table (
@@ -205,7 +200,6 @@ from public.app_profiles ap
 order by ap.is_active desc, ap.created_at asc, ap.user_id;
 end;
 $function$;
-
 -- (4) 管理員查特定使用者有效權限；必須先驗證呼叫者，不接受客戶端宣告自己是管理員。
 create or replace function pts_private.pts_admin_user_permission_details(p_target_user_id uuid)
 returns table (
@@ -237,7 +231,6 @@ select d.*
 from pts_private.pts_permission_details_for_user(p_target_user_id) d;
 end;
 $function$;
-
 -- (5) public API：使用呼叫者權限，真正的身份驗證寫在上方 private 函式。
 create or replace function public.pts_admin_users()
 returns table (
@@ -253,7 +246,6 @@ set search_path = ''
 as $function$
 select * from pts_private.pts_admin_list_users();
 $function$;
-
 create or replace function public.pts_admin_user_permissions(p_target_user_id uuid)
 returns table (
     permission_key text,
@@ -268,7 +260,6 @@ set search_path = ''
 as $function$
 select * from pts_private.pts_admin_user_permission_details(p_target_user_id);
 $function$;
-
 -- (6) 最小權限：私人核心不允許一般使用者直接給任意 user_id。
 --     只把需要進入 private 管理員檢查函式的 EXECUTE 授予 authenticated。
 revoke all on function pts_private.pts_admin_list_users()
@@ -280,7 +271,6 @@ grant execute on function pts_private.pts_admin_list_users()
     to authenticated;
 grant execute on function pts_private.pts_admin_user_permission_details(uuid)
     to authenticated;
-
 revoke all on function public.pts_admin_users()
     from public, anon, authenticated, service_role;
 revoke all on function public.pts_admin_user_permissions(uuid)
@@ -289,15 +279,12 @@ grant execute on function public.pts_admin_users()
     to authenticated;
 grant execute on function public.pts_admin_user_permissions(uuid)
     to authenticated;
-
 comment on function public.pts_admin_users() is
     'Read-only PTS personnel directory: active system admins only; excludes Auth email.';
 comment on function public.pts_admin_user_permissions(uuid) is
     'Read-only effective permissions for a PTS profile: active system admins only.';
 comment on function pts_private.pts_permission_details_for_user(uuid) is
     'Private shared evaluator, not directly executable by authenticated or anon.';
-
 -- 讓 Supabase Data API 重新載入 RPC 定義。
 notify pgrst, 'reload schema';
-
 commit;

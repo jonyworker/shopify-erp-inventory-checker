@@ -1,6 +1,5 @@
 -- PTS / Individual permission overrides: admin-only RPC, audit, and optional Taiwan-local expiry date.
 begin;
-
 create or replace function pts_private.pts_admin_user_overrides(p_target_user_id uuid)
 returns table (
  permission_key text, tool_key text, tool_label text, action_key text,
@@ -22,7 +21,6 @@ begin
  left join public.user_permission_overrides uo on uo.user_id=p_target_user_id and uo.permission_id=pc.id
  order by tc.sort_order, tc.tool_key, pc.action_key;
 end; $$;
-
 create or replace function pts_private.pts_admin_save_user_override(
  p_target_user_id uuid, p_permission_key text, p_effect text, p_valid_until_date date
 )
@@ -81,7 +79,6 @@ begin
         left('管理介面調整個人權限：' || p_permission_key || ' → ' || p_effect,500));
  return true;
 end; $$;
-
 create or replace function public.pts_admin_user_overrides(p_target_user_id uuid)
 returns table(permission_key text, tool_key text, tool_label text, action_key text,
  action_label text, is_available boolean, effect text, valid_until timestamptz)

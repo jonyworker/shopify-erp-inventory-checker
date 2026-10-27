@@ -21,7 +21,6 @@ CREATE TABLE pts_private.pts_deleted_employee_archives (
 );
 ALTER TABLE pts_private.pts_deleted_employee_archives ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON pts_private.pts_deleted_employee_archives FROM PUBLIC, anon, authenticated;
-
 CREATE TABLE pts_private.pts_deleted_employee_audit_snapshots (
                                                                   archive_id uuid NOT NULL REFERENCES pts_private.pts_deleted_employee_archives(id) ON DELETE RESTRICT,
                                                                   original_audit_id uuid NOT NULL,
@@ -30,12 +29,10 @@ CREATE TABLE pts_private.pts_deleted_employee_audit_snapshots (
 );
 ALTER TABLE pts_private.pts_deleted_employee_audit_snapshots ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON pts_private.pts_deleted_employee_audit_snapshots FROM PUBLIC, anon, authenticated;
-
 COMMENT ON TABLE pts_private.pts_deleted_employee_archives IS
   'PTS H3 deletion ledger. Identity and authorization snapshots persist after Auth account deletion; not a complete PII erasure.';
 COMMENT ON TABLE pts_private.pts_deleted_employee_audit_snapshots IS
   'Audit evidence snapshot to preserve actor/target attribution before auth.users delete cascades / SET NULL FKs.';
-
 CREATE OR REPLACE FUNCTION pts_private.pts_admin_employee_delete_preview(p_target_user_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=''
@@ -179,10 +176,8 @@ RETURN jsonb_build_object(
        );
 END;
 $function$;
-
 REVOKE ALL ON FUNCTION pts_private.pts_admin_employee_delete_preview(uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION pts_private.pts_admin_employee_delete_preview(uuid) TO authenticated;
-
 CREATE OR REPLACE FUNCTION public.pts_admin_employee_delete_preview(p_target_user_id uuid)
 RETURNS jsonb LANGUAGE sql STABLE SET search_path=''
 AS $function$

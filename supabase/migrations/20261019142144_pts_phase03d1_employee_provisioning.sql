@@ -5,7 +5,6 @@
 
 alter table public.app_profiles
     add column if not exists must_change_password boolean not null default false;
-
 -- A pending account cannot accidentally be activated before its initial
 -- password has been changed through the dedicated completion workflow.
 do $ddl$
@@ -22,7 +21,6 @@ alter table public.app_profiles
 end if;
 end
 $ddl$;
-
 -- Pending onboarding secrets live outside exposed public schema.
 -- The "temporary password" handed to the employee is an enrollment secret;
 -- it is NOT the Supabase Auth user's password. This prevents any session
@@ -35,12 +33,10 @@ create table if not exists pts_private.pts_employee_onboarding (
     consumed_at timestamptz,
     created_at timestamptz not null default now()
     );
-
 -- Private schema is not exposed through PostgREST by default; RLS is added
 -- for defense in depth, and the table is not writable from client roles.
 alter table pts_private.pts_employee_onboarding enable row level security;
 revoke all on pts_private.pts_employee_onboarding from public, anon, authenticated;
-
 -- Service-role-only RPC, called exclusively by the trusted Edge Function.
 -- A single transaction creates the pending profile, onboarding code HASH
 -- and the audit trail. No temporary plaintext is ever stored in the DB.
@@ -128,7 +124,6 @@ insert into public.permission_audit_logs (
 return p_new_user_id;
 end;
 $function$;
-
 -- PostgreSQL grants EXECUTE on functions to PUBLIC by default: revoke it.
 revoke all on function public.pts_service_register_employee(uuid, uuid, text, text, text, timestamptz)
     from public, anon, authenticated;

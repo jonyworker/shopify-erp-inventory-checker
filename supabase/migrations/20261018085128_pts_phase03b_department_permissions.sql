@@ -51,7 +51,6 @@ order by tc.sort_order, tc.tool_key,
          pc.action_key;
 end;
 $function$;
-
 -- 2) Save a complete permission selection for one department atomically.
 -- Empty array means revoke every department-level grant, NOT delete the department.
 -- Existing assignments from other departments/roles and individual overrides are never touched.
@@ -181,7 +180,6 @@ return (select count(*)::integer from public.department_permissions dp
         where dp.department_id = p_department_id);
 end;
 $function$;
-
 -- Private functions aren't directly exposed by PostgREST. Explicit EXECUTE grants
 -- are required for the public invoker wrappers to reach them.
 revoke all on function pts_private.pts_admin_list_department_permissions(uuid)
@@ -190,7 +188,6 @@ revoke all on function pts_private.pts_admin_replace_department_permissions(uuid
     from public, anon, authenticated, service_role;
 grant execute on function pts_private.pts_admin_list_department_permissions(uuid) to authenticated;
 grant execute on function pts_private.pts_admin_replace_department_permissions(uuid, text[], text) to authenticated;
-
 -- Public RPC wrappers intentionally use SECURITY INVOKER, not SECURITY DEFINER.
 create or replace function public.pts_admin_department_permissions(p_department_id uuid)
 returns table (
@@ -213,7 +210,6 @@ set search_path = ''
 as $function$
 select * from pts_private.pts_admin_list_department_permissions(p_department_id);
 $function$;
-
 create or replace function public.pts_admin_save_department_permissions(
     p_department_id uuid,
     p_permission_keys text[],
@@ -228,7 +224,6 @@ select pts_private.pts_admin_replace_department_permissions(
                p_department_id, p_permission_keys, p_reason
        );
 $function$;
-
 revoke all on function public.pts_admin_department_permissions(uuid)
     from public, anon, authenticated, service_role;
 revoke all on function public.pts_admin_save_department_permissions(uuid, text[], text)

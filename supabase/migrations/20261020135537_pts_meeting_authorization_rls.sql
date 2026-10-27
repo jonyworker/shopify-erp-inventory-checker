@@ -55,20 +55,16 @@ VALUES (
            'Phase 03-D4: existing administrator receives explicit meeting rights before enforcing RLS'
        );
 END $$;
-
 -- Remove legacy authenticated-wide RLS policies: permissive policies combine with OR.
 DROP POLICY IF EXISTS meeting_read_authenticated ON public.meeting_records;
 DROP POLICY IF EXISTS meeting_insert_authenticated ON public.meeting_records;
 DROP POLICY IF EXISTS meeting_update_authenticated ON public.meeting_records;
 DROP POLICY IF EXISTS meeting_delete_authenticated ON public.meeting_records;
-
 ALTER TABLE public.meeting_records ENABLE ROW LEVEL SECURITY;
-
 CREATE POLICY meeting_select_pts_view
 ON public.meeting_records
 FOR SELECT TO authenticated
                USING ((SELECT public.pts_can('meetingArchive.view')));
-
 CREATE POLICY meeting_insert_pts_create
 ON public.meeting_records
 FOR INSERT TO authenticated
@@ -76,16 +72,13 @@ WITH CHECK (
   (SELECT public.pts_can('meetingArchive.create'))
   AND created_by = (SELECT auth.uid())
 );
-
 CREATE POLICY meeting_update_pts_edit
 ON public.meeting_records
 FOR UPDATE TO authenticated
                       USING ((SELECT public.pts_can('meetingArchive.edit')))
     WITH CHECK ((SELECT public.pts_can('meetingArchive.edit')));
-
 CREATE POLICY meeting_delete_pts_delete
 ON public.meeting_records
 FOR DELETE TO authenticated
 USING ((SELECT public.pts_can('meetingArchive.delete')));
-
--- Intentionally leave existing grants unchanged. RLS enforces user-specific rights.
+-- Intentionally leave existing grants unchanged. RLS enforces user-specific rights.;
