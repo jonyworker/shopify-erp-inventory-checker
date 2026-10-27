@@ -8,7 +8,8 @@
     "build": "vite build",
     "test": "vitest run",
     "preview": "vite preview",
-    "deploy": "npm run build && gh-pages -d dist"
+    "deploy": "npm run build && gh-pages -d dist",
+    "pts:check": "git fetch && git status -sb && npx supabase migration list --linked"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
